@@ -4,10 +4,18 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Chemical = { id: string; name: string; formula: string; cas: string; location: string; amount: string; tag: string; createdAt: string; structureUrl: string; };
 type Language = "en" | "zh";
+type LookupState = { status: "idle" | "loading" | "success" | "not-found" | "error"; cid?: number };
 
 const STORAGE_KEY = "pcss-chemicals-v1";
 const LANGUAGE_KEY = "pcss-language-v1";
+const CAS_PATTERN = /^\d{2,7}-\d{2}-\d$/;
 const pubChemImage = (cas: string) => `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(cas)}/PNG?record_type=2d&image_size=large`;
+const isValidCas = (cas: string) => {
+  if (!CAS_PATTERN.test(cas)) return false;
+  const digits = cas.replaceAll("-", "");
+  const checksum = digits.slice(0, -1).split("").reverse().reduce((sum, digit, index) => sum + Number(digit) * (index + 1), 0) % 10;
+  return checksum === Number(digits.at(-1));
+};
 const INITIAL_CHEMICALS: Chemical[] = [
   { id: "benzoic-acid", name: "Benzoic acid", formula: "C₇H₆O₂", cas: "65-85-0", location: "Organic cabinet · A2", amount: "250 g", tag: "Organic acid", createdAt: "2026-08-16T09:30:00.000Z", structureUrl: pubChemImage("65-85-0") },
   { id: "caffeine", name: "Caffeine", formula: "C₈H₁₀N₄O₂", cas: "58-08-2", location: "Desiccator · D1", amount: "25 g", tag: "Alkaloid", createdAt: "2026-08-18T03:15:00.000Z", structureUrl: pubChemImage("58-08-2") },
@@ -28,8 +36,10 @@ const COPY = {
     safety: "Inventory use only · Follow laboratory safety procedures when handling chemicals",
     newRecord: "NEW RECORD", addTitle: "Add a chemical", addIntro: "The CAS number is used to retrieve a 2D structure automatically from PubChem.",
     chemicalName: "Chemical name *", chemicalNameExample: "e.g. Benzoic acid", formulaLabel: "Molecular formula *", formulaExample: "e.g. C7H6O2", casLabel: "CAS number *", casExample: "e.g. 65-85-0", casHelp: "Enter a valid format, e.g. 65-85-0",
-    amountLabel: "Quantity *", amountExample: "e.g. 250 g", locationLabel: "Storage location *", locationExample: "e.g. Organic cabinet · A2", tagLabel: "Custom tag *", tagExample: "e.g. Organic acid",
+    amountLabel: "Quantity", amountExample: "e.g. 250 g", locationLabel: "Storage location *", locationExample: "e.g. Organic cabinet · A2", tagLabel: "Custom tag", tagExample: "e.g. Organic acid",
     structureLink: "Structure image URL", optional: "Optional", structureExample: "Leave blank to retrieve from PubChem using the CAS number", cancel: "Cancel", save: "Save to inventory →", close: "Close",
+    lookupHint: "Enter a valid CAS number to auto-fill the English name and formula.", lookupLoading: "Looking up PubChem…", lookupSuccess: (cid?: number) => `Auto-filled from PubChem${cid ? ` · CID ${cid}` : ""}`, lookupNotFound: "No matching compound was found in PubChem.", lookupError: "PubChem is temporarily unavailable. You can enter the details manually.",
+    untagged: "Untagged", notSpecified: "Not specified",
     duplicate: "This CAS number is already in your inventory", addedToast: (name: string) => `${name} added`, deletedToast: (name: string) => `${name} deleted`,
     deleteTitle: (name: string) => `Delete “${name}”?`, deleteCopy: "This record will be permanently removed from this browser.", confirmDelete: "Delete record", structureAlt: (name: string) => `2D chemical structure of ${name}`,
   },
@@ -45,8 +55,10 @@ const COPY = {
     safety: "仅供库存管理 · 化学品处理请遵守实验室安全规范",
     newRecord: "新建词条", addTitle: "添加化学试剂", addIntro: "CAS 号将用于从 PubChem 自动获取二维结构图。",
     chemicalName: "试剂名称 *", chemicalNameExample: "例如：苯甲酸", formulaLabel: "化学式 *", formulaExample: "例如：C7H6O2", casLabel: "CAS 号 *", casExample: "例如：65-85-0", casHelp: "请输入有效格式，例如 65-85-0",
-    amountLabel: "存储量 *", amountExample: "例如：250 g", locationLabel: "存储地点 *", locationExample: "例如：有机试剂柜 · A2", tagLabel: "自定义标签 *", tagExample: "例如：有机酸",
+    amountLabel: "存储量", amountExample: "例如：250 g", locationLabel: "存储地点 *", locationExample: "例如：有机试剂柜 · A2", tagLabel: "自定义标签", tagExample: "例如：有机酸",
     structureLink: "结构图片链接", optional: "可选", structureExample: "留空则通过 CAS 号从 PubChem 获取", cancel: "取消", save: "保存并入库 →", close: "关闭",
+    lookupHint: "输入有效 CAS 号后，将自动补全英文名和化学式。", lookupLoading: "正在查询 PubChem…", lookupSuccess: (cid?: number) => `已从 PubChem 自动补全${cid ? ` · CID ${cid}` : ""}`, lookupNotFound: "PubChem 中未找到对应化合物。", lookupError: "PubChem 暂时不可用，你仍可手动填写。",
+    untagged: "未加标签", notSpecified: "未填写",
     duplicate: "这个 CAS 号已经存在于库存中", addedToast: (name: string) => `已添加 ${name}`, deletedToast: (name: string) => `已删除 ${name}`,
     deleteTitle: (name: string) => `删除“${name}”？`, deleteCopy: "这个词条会从当前浏览器的库存中永久移除。", confirmDelete: "确认删除", structureAlt: (name: string) => `${name}的二维化学结构`,
   },
@@ -64,6 +76,7 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Chemical | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
   const [toast, setToast] = useState("");
   const t = COPY[language];
   const locale = language === "en" ? "en-US" : "zh-CN";
@@ -78,6 +91,25 @@ export default function Home() {
   useEffect(() => { if (hydrated) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(chemicals)); }, [chemicals, hydrated]);
   useEffect(() => { document.documentElement.lang = language === "en" ? "en" : "zh-CN"; if (hydrated) window.localStorage.setItem(LANGUAGE_KEY, language); }, [language, hydrated]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(""), 2400); return () => window.clearTimeout(timer); }, [toast]);
+  useEffect(() => {
+    const cas = form.cas.trim();
+    if (!isValidCas(cas)) { setLookup({ status: "idle" }); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLookup({ status: "loading" });
+      try {
+        const response = await fetch(`/api/pubchem?cas=${encodeURIComponent(cas)}`, { signal: controller.signal });
+        if (response.status === 404 || response.status === 400) { setLookup({ status: "not-found" }); return; }
+        if (!response.ok) { setLookup({ status: "error" }); return; }
+        const compound = await response.json() as { name: string; formula: string; cid?: number };
+        setForm((current) => current.cas.trim() === cas ? { ...current, name: compound.name, formula: compound.formula } : current);
+        setLookup({ status: "success", cid: compound.cid });
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") setLookup({ status: "error" });
+      }
+    }, 450);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [form.cas]);
 
   const results = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -94,7 +126,7 @@ export default function Home() {
   }, [chemicals, query, field, sort, locale]);
 
   const locations = new Set(chemicals.map((item) => item.location)).size;
-  const tags = new Set(chemicals.map((item) => item.tag)).size;
+  const tags = new Set(chemicals.map((item) => item.tag.trim()).filter(Boolean)).size;
 
   function changeLanguage(nextLanguage: Language) { setLanguage(nextLanguage); }
   function submitChemical(event: FormEvent<HTMLFormElement>) {
@@ -107,7 +139,7 @@ export default function Home() {
     if (!deleteTarget) return;
     setChemicals((current) => current.filter((item) => item.id !== deleteTarget.id)); setToast(t.deletedToast(deleteTarget.name)); setDeleteTarget(null);
   }
-  function openAddModal() { setForm(EMPTY_FORM); setModalOpen(true); }
+  function openAddModal() { setForm(EMPTY_FORM); setLookup({ status: "idle" }); setModalOpen(true); }
 
   return (
     <main className="shell">
@@ -146,8 +178,8 @@ export default function Home() {
                 <div className="structure-fallback"><span>⌬</span><small>{t.unavailable}</small></div>
                 <button className="delete-button" onClick={() => setDeleteTarget(chemical)} aria-label={`${t.deleteEntry}: ${chemical.name}`} title={t.deleteEntry}>×</button><span className="record-id">#{chemical.id.slice(0, 4).toUpperCase()}</span>
               </div>
-              <div className="card-body"><div className="tag-row"><span className="tag">{chemical.tag}</span><span className="date">{t.added} {new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(chemical.createdAt))}</span></div><h3>{chemical.name}</h3><p className="formula">{chemical.formula}</p>
-                <dl><div><dt>{t.cas}</dt><dd>{chemical.cas}</dd></div><div><dt>{t.location}</dt><dd>{chemical.location}</dd></div></dl><div className="amount"><span>{t.currentStock}</span><strong>{chemical.amount}</strong></div>
+              <div className="card-body"><div className="tag-row"><span className={`tag${chemical.tag ? "" : " tag-empty"}`}>{chemical.tag || t.untagged}</span><span className="date">{t.added} {new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(chemical.createdAt))}</span></div><h3>{chemical.name}</h3><p className="formula">{chemical.formula}</p>
+                <dl><div><dt>{t.cas}</dt><dd>{chemical.cas}</dd></div><div><dt>{t.location}</dt><dd>{chemical.location}</dd></div></dl><div className="amount"><span>{t.currentStock}</span><strong className={chemical.amount ? "" : "amount-empty"}>{chemical.amount || t.notSpecified}</strong></div>
               </div>
             </article>
           ))}</div>
@@ -159,10 +191,10 @@ export default function Home() {
           <form onSubmit={submitChemical}><div className="form-grid">
             <label><span>{t.chemicalName}</span><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={t.chemicalNameExample} autoFocus /></label>
             <label><span>{t.formulaLabel}</span><input required value={form.formula} onChange={(event) => setForm({ ...form, formula: event.target.value })} placeholder={t.formulaExample} /></label>
-            <label><span>{t.casLabel}</span><input required value={form.cas} onChange={(event) => setForm({ ...form, cas: event.target.value })} placeholder={t.casExample} pattern="[0-9]{2,7}-[0-9]{2}-[0-9]" title={t.casHelp} /></label>
-            <label><span>{t.amountLabel}</span><input required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder={t.amountExample} /></label>
+            <label className="cas-field"><span>{t.casLabel}</span><input required value={form.cas} onChange={(event) => setForm({ ...form, cas: event.target.value, name: "", formula: "" })} placeholder={t.casExample} pattern="[0-9]{2,7}-[0-9]{2}-[0-9]" title={t.casHelp} /><small className={`lookup-status ${lookup.status}`}>{lookup.status === "loading" ? t.lookupLoading : lookup.status === "success" ? t.lookupSuccess(lookup.cid) : lookup.status === "not-found" ? t.lookupNotFound : lookup.status === "error" ? t.lookupError : t.lookupHint}</small></label>
+            <label><span>{t.amountLabel} <i>{t.optional}</i></span><input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder={t.amountExample} /></label>
             <label><span>{t.locationLabel}</span><input required value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder={t.locationExample} /></label>
-            <label><span>{t.tagLabel}</span><input required value={form.tag} onChange={(event) => setForm({ ...form, tag: event.target.value })} placeholder={t.tagExample} /></label>
+            <label><span>{t.tagLabel} <i>{t.optional}</i></span><input value={form.tag} onChange={(event) => setForm({ ...form, tag: event.target.value })} placeholder={t.tagExample} /></label>
             <label className="full-field"><span>{t.structureLink} <i>{t.optional}</i></span><input type="url" value={form.structureUrl} onChange={(event) => setForm({ ...form, structureUrl: event.target.value })} placeholder={t.structureExample} /></label>
           </div><div className="form-actions"><button type="button" onClick={() => setModalOpen(false)}>{t.cancel}</button><button className="primary-button" type="submit">{t.save}</button></div></form>
         </section>
