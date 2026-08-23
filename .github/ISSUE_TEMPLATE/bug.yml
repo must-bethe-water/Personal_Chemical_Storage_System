@@ -1,0 +1,39 @@
+name: Bug report
+description: Report reproducible incorrect behavior in PCSS
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: PCSS version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac architecture
+      placeholder: macOS 15.6, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Do not attach real inventories, API keys, or sensitive laboratory data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network state
+      options: [Online, Offline, Intermittent, Not relevant]
+    validations:
+      required: true

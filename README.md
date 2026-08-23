@@ -1,100 +1,111 @@
-# vinext-starter
+# PCSS for macOS
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+PCSS (Personal Chemical Storage System) is a local-first, open-source personal
+chemical inventory for macOS. It tracks identity, quantity, location, tags,
+database identifiers, and two-dimensional structures without requiring an
+account or a PCSS-operated server.
 
-## Prerequisites
+> PCSS is an inventory aid, not a safety data sheet, regulatory compliance, or
+> authoritative chemical identity system. Verify all safety-critical data from
+> current primary sources. See [DISCLAIMER.md](DISCLAIMER.md).
 
-- Node.js `>=22.13.0`
+## Features
 
-## Quick Start
+- English and Chinese interface
+- Search, field filters, tag filters, sorting, and duplicate-CAS review
+- Local SQLite inventory with transactional writes and rotating backups
+- JSON and CSV import/export with merge or replace workflows
+- Offline browsing, editing, deletion, filtering, and cached structure images
+- On-demand PubChem properties and structures
+- UniChem mapping to ChEBI and ChEMBL
+- Optional EPA CompTox lookup with the user's API key stored in macOS Keychain
+- Native AppKit/WebKit shell without a bundled Chromium runtime
+
+## Privacy and offline behavior
+
+Inventory data stays under `~/Library/Application Support/PCSS/`. PCSS has no
+analytics, telemetry, advertising, or account system. Online lookups send only
+the required chemical identifier to the relevant public database; quantities,
+locations, and tags are not sent. See [PRIVACY.md](PRIVACY.md) for the exact
+data flow.
+
+Without a network connection, all local inventory functions remain available.
+New database enrichment and uncached images wait until connectivity returns.
+
+## Install a published release
+
+Published GitHub Releases contain a notarized Universal macOS DMG and ZIP for
+Apple Silicon and Intel Macs, plus SHA-256 checksums.
+
+1. Download the DMG from the latest Release.
+2. Verify its SHA-256 value against `SHA256SUMS.txt` if desired.
+3. Open the DMG and copy PCSS to Applications.
+
+Release builds support macOS 13 or later. Use **PCSS → Check for Updates…** to
+open the latest release page. PCSS never downloads or installs updates without
+the user.
+
+## Build from source
+
+Requirements:
+
+- macOS 13 or later
+- Node.js 22.13 or later
+- Xcode Command Line Tools
 
 ```bash
-npm install
-npm run dev
+npm ci
+npm test
 npm run build
+npm run release:verify
 ```
 
-This starter does not use `wrangler.jsonc`.
+The ad-hoc-signed Universal development app is written to `outputs/PCSS.app`.
+There is no standalone browser target or development server; the React UI is
+compiled only as an internal application resource.
 
-## Included Shape
+## Local data and migration
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+- SQLite database: `~/Library/Application Support/PCSS/inventory.sqlite3`
+- Cached structures: `~/Library/Application Support/PCSS/StructureCache/`
+- Last 20 inventory snapshots: `~/Library/Application Support/PCSS/Backups/`
+- Optional CompTox key: macOS Keychain
 
-## Workspace Auth Headers
+The first launch transactionally migrates the earlier
+`pcss-chemicals-v1` WebKit local-storage format. The legacy value is removed
+only after SQLite confirms the write. Interface language remains in WebKit's
+local preference store.
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+Use **Database settings → Data & Backup** to export JSON or CSV and to import a
+file. JSON is the lossless backup format; CSV is intended for review and
+interchange.
 
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
+## Project structure
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+- `desktop/ui/`: React interface and UI model helpers
+- `desktop/native/`: AppKit/WebKit shell, SQLite store, Keychain and API bridge
+- `desktop/scripts/`: deterministic build, test, verification, and release tools
+- `tests/`: UI model tests
+- `.github/`: CI, notarized release workflow, Dependabot, and contribution forms
 
-Treat the full name as optional and fall back to email when it is absent:
+## Verification
 
-```tsx
-import { headers } from "next/headers";
+`npm test` runs linting, strict TypeScript checking, UI model tests, native
+SQLite/import/export/cache tests, and a production UI build. CI additionally
+builds and verifies a Universal app.
 
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
+## Maintaining releases
 
-  const displayName = fullName ?? email;
-  // ...
-}
-```
+See [RELEASING.md](RELEASING.md). A public tag release requires an Apple
+Developer ID Application certificate and Apple notarization credentials. These
+credentials are never stored in the repository.
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## Contributing and security
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report
+vulnerabilities according to [SECURITY.md](SECURITY.md). Technical security
+decisions are documented in [SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md).
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+PCSS is available under the [MIT License](LICENSE). Database services and
+third-party software retain their own terms; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

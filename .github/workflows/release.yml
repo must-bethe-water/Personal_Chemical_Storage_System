@@ -1,0 +1,60 @@
+name: Release macOS
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - run: npm ci
+      - name: Verify tag and tests
+        run: |
+          test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+          npm test
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          test -n "$CERTIFICATE_BASE64"
+          test -n "$CERTIFICATE_PASSWORD"
+          test -n "$KEYCHAIN_PASSWORD"
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/pcss.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/pcss.keychain-db"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/pcss.keychain-db"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$RUNNER_TEMP/pcss.keychain-db" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/pcss.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/pcss.keychain-db"
+      - name: Configure notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials PCSS_RELEASE --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+      - name: Build, sign, notarize, and package
+        env:
+          PCSS_NOTARY_PROFILE: PCSS_RELEASE
+          PCSS_BUILD_NUMBER: ${{ github.run_number }}
+          PCSS_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          identity="$(security find-identity -v -p codesigning "$RUNNER_TEMP/pcss.keychain-db" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          test -n "$identity"
+          PCSS_SIGN_IDENTITY="$identity" npm run release:macos
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" outputs/PCSS-*-macOS-universal.zip outputs/PCSS-*-macOS-universal.dmg outputs/SHA256SUMS.txt --verify-tag --generate-notes --title "PCSS ${GITHUB_REF_NAME#v}"
