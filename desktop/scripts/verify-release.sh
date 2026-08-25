@@ -19,12 +19,16 @@ architectures="$(lipo -archs "$binary")"
 [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]] || { echo "PCSS is not universal: $architectures" >&2; exit 1; }
 
 codesign --verify --deep --strict "$app"
+if [[ "${PCSS_REQUIRE_AD_HOC_SIGNATURE:-0}" == "1" ]]; then
+  signature_details="$(codesign -d --verbose=4 "$app" 2>&1)"
+  [[ "$signature_details" == *"Signature=adhoc"* ]] || { echo "Expected an ad-hoc signature" >&2; exit 1; }
+fi
 if [[ "${PCSS_REQUIRE_DISTRIBUTION_SIGNATURE:-0}" == "1" ]]; then
   signature_details="$(codesign -d --verbose=4 "$app" 2>&1)"
   [[ "$signature_details" == *"Authority=Developer ID Application:"* ]] || { echo "Missing Developer ID Application signature" >&2; exit 1; }
   [[ "$signature_details" == *"runtime"* ]] || { echo "Hardened Runtime is not enabled" >&2; exit 1; }
 fi
-for required in LICENSE PRIVACY.md SECURITY.md DISCLAIMER.md THIRD_PARTY_NOTICES.md CHANGELOG.md; do
+for required in LICENSE PRIVACY.md SECURITY.md DISCLAIMER.md THIRD_PARTY_NOTICES.md CHANGELOG.md INSTALL.md; do
   [[ -f "$project_root/$required" ]] || { echo "Missing $required" >&2; exit 1; }
 done
 for bundled in LICENSE PRIVACY.md DISCLAIMER.md THIRD_PARTY_NOTICES.md; do

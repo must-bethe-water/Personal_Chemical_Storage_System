@@ -34,12 +34,19 @@ New database enrichment and uncached images wait until connectivity returns.
 
 ## Install a published release
 
-Published GitHub Releases contain a notarized Universal macOS DMG and ZIP for
-Apple Silicon and Intel Macs, plus SHA-256 checksums.
+Published GitHub Releases contain an ad-hoc-signed, **unnotarized** Universal
+macOS DMG and ZIP for Apple Silicon and Intel Macs, plus SHA-256 checksums.
+Because the project does not use the paid Apple Developer Program, macOS blocks
+the first ordinary launch and does not show a verified developer identity.
 
 1. Download the DMG from the latest Release.
 2. Verify its SHA-256 value against `SHA256SUMS.txt` if desired.
 3. Open the DMG and copy PCSS to Applications.
+4. Try to launch PCSS once, then use **System Settings → Privacy & Security →
+   Open Anyway** and confirm the override.
+
+Read [INSTALL.md](INSTALL.md) before overriding Gatekeeper. Only download from
+the official repository and never bypass a warning for an unexpected copy.
 
 Release builds support macOS 13 or later. Use **PCSS → Check for Updates…** to
 open the latest release page. PCSS never downloads or installs updates without
@@ -86,7 +93,7 @@ interchange.
 - `desktop/native/`: AppKit/WebKit shell, SQLite store, Keychain and API bridge
 - `desktop/scripts/`: deterministic build, test, verification, and release tools
 - `tests/`: UI model tests
-- `.github/`: CI, notarized release workflow, Dependabot, and contribution forms
+- `.github/`: CI, unnotarized release workflow, Dependabot, and contribution forms
 
 ## Verification
 
@@ -96,9 +103,8 @@ builds and verifies a Universal app.
 
 ## Maintaining releases
 
-See [RELEASING.md](RELEASING.md). A public tag release requires an Apple
-Developer ID Application certificate and Apple notarization credentials. These
-credentials are never stored in the repository.
+See [RELEASING.md](RELEASING.md). A public tag release is built entirely by
+GitHub Actions with an ad-hoc signature and requires no Apple credentials.
 
 ## Contributing and security
 

@@ -1,8 +1,17 @@
 # Security architecture
 
-PCSS 1.0 is distributed directly with Developer ID rather than through the Mac
-App Store. Release builds enable Apple's Hardened Runtime and are notarized and
-stapled. Development builds are ad-hoc signed.
+PCSS 1.0 is distributed directly through GitHub without Apple Developer Program
+membership. Release and development builds use ad-hoc signatures and are not
+notarized. The signature detects changes inside the built bundle but provides
+no Apple-verified developer identity, and Gatekeeper blocks the first ordinary
+launch. Release filenames, notes, and installation documentation state this
+limitation and require a deliberate Privacy & Security override.
+
+The official GitHub repository, protected maintainer account, reproducible
+workflow, source review, and published SHA-256 values form the available
+distribution controls. Because the checksums and artifacts share one GitHub
+trust boundary, checksums are integrity aids rather than independent proof of
+authorship.
 
 App Sandbox is intentionally not enabled in 1.0. PCSS predates sandboxed data
 storage and must transactionally migrate inventory from its existing WebKit

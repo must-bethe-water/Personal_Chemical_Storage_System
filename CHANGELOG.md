@@ -14,3 +14,5 @@ Versioning.
   and transactional migration from the earlier WebKit local-storage format.
 - Offline inventory browsing and editing plus cached structure images.
 - Duplicate-CAS review and merge workflow, tags, search, filtering, and sorting.
+- GitHub-hosted ad-hoc-signed, unnotarized Universal DMG and ZIP release flow
+  with explicit Gatekeeper guidance and SHA-256 checksums.

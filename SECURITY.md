@@ -4,6 +4,15 @@
 
 Security fixes are provided for the latest published PCSS release.
 
+## Release authenticity
+
+PCSS releases are ad-hoc signed and are not notarized by Apple. Download only
+from this repository's Releases page, verify `SHA256SUMS.txt`, and follow
+`INSTALL.md`. A checksum published beside an artifact helps detect accidental
+corruption but is not independent proof if the GitHub account itself is
+compromised. Report unexpected signatures, filenames, or installation guidance
+as a security issue.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for a suspected vulnerability involving code

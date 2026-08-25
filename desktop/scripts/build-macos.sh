@@ -6,6 +6,7 @@ outputs_dir="${PCSS_OUTPUT_DIR:-$project_root/outputs}"
 output_app="$outputs_dir/PCSS.app"
 bundle_identifier="io.github.must-bethe-water.pcss"
 bundle_identifier="${PCSS_BUNDLE_IDENTIFIER:-$bundle_identifier}"
+legacy_bundle_identifier="com.pcss.inventory"
 sign_identity="${PCSS_SIGN_IDENTITY:--}"
 build_number="${PCSS_BUILD_NUMBER:-1}"
 app_version="$(node -p "require('./package.json').version")"
@@ -25,7 +26,7 @@ cleanup_numbered_copies() {
   [[ -d "$outputs_dir" ]] || return 0
   while IFS= read -r -d '' candidate; do
     candidate_identifier="$(plutil -extract CFBundleIdentifier raw -o - "$candidate/Contents/Info.plist" 2>/dev/null || true)"
-    if [[ "$candidate_identifier" == "$bundle_identifier" ]]; then
+    if [[ "$candidate_identifier" == "$bundle_identifier" || "$candidate_identifier" == "$legacy_bundle_identifier" ]]; then
       rm -rf "$candidate"
     fi
   done < <(find "$outputs_dir" -maxdepth 1 -type d -name 'PCSS [0-9]*.app' -print0)
