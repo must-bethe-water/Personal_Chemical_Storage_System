@@ -3,7 +3,7 @@
 All notable changes to PCSS are documented here. The project follows Semantic
 Versioning.
 
-## [1.0.0] - 2026-08-23
+## [1.0.0] - 2026-08-25
 
 ### Added
 
