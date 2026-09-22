@@ -85,8 +85,9 @@ The first launch transactionally migrates the earlier
 only after SQLite confirms the write. Interface language remains in WebKit's
 local preference store.
 
-Use **System settings** in the header to save the number of records per page
-(1–500, default 24). Page controls appear above and below the results. Selections
+Use the **System settings** gear in the header to save the number of records per page
+(1–500, default 24). The same settings window groups Display, Database access,
+and Data & backup. Page controls appear above and below the results. Selections
 are retained across pages; changing the filter clears selection. **Select all**
 appears after clicking **Select** and includes every page of the current results.
 
@@ -97,7 +98,7 @@ Undo restores all fields of the deleted records without reverting other edits.
 Automatic backups and unused structure images expire after 30 days and are
 cleaned at startup and hourly while running. User-exported files are unaffected.
 
-Use **Database settings → Data & Backup** to export JSON or CSV and to import a
+Use **System settings → Data & Backup** to export JSON or CSV and to import a
 file. JSON is the lossless backup format; CSV is intended for review and
 interchange.
 

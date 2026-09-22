@@ -49,7 +49,7 @@ const INITIAL_CHEMICALS: Chemical[] = [];
 const EMPTY_FORM: InventoryForm = { name: "", formula: "", cas: "", location: "", amount: "", tags: [], structureUrl: "" };
 const COPY = {
   en: {
-    systemSettings: "System settings", pageSize: "Records per page", pageSizeHelp: "Enter a whole number from 1 to 500. This setting is saved on this Mac.", settingsSaved: "Display settings saved", preferenceError: "Could not save display settings. Please try again.", pagination: "Inventory pages", previousPage: "Previous", nextPage: "Next", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `Page ${page} of ${pages} · ${start}–${end} of ${total}`,
+    systemSettings: "System settings", displaySettings: "Display", databaseSettings: "Database access", backupSettings: "Data & backup", pageSize: "Records per page", pageSizeHelp: "Enter a whole number from 1 to 500. This setting is saved on this Mac.", settingsSaved: "Display settings saved", preferenceError: "Could not save display settings. Please try again.", pagination: "Inventory pages", previousPage: "Previous", nextPage: "Next", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `Page ${page} of ${pages} · ${start}–${end} of ${total}`,
     brand: "Personal chemical storage", localData: "Local inventory · on-demand sources", add: "Add chemical", settings: "Database settings",
     heroLead: "Your chemical inventory,", heroAccent: "clearly", heroEnd: "stored where it belongs.", heroCopy: "Track molecular structures, quantities, and locations. Find every reagent with confidence.",
     overview: "Inventory overview", records: "Inventory records", unique: "unique molecules", locations: "Storage locations", activeLocations: "active locations", tags: "Custom tags", categories: "classification groups",
@@ -73,7 +73,7 @@ const COPY = {
     dataTitle: "Local inventory data", dataIntro: "Inventory is stored in SQLite under Application Support. Automatic JSON snapshots retain at most 20 changes for up to 30 days.", exportJSON: "Export JSON backup", exportCSV: "Export CSV", importData: "Import JSON / CSV", exportSuccess: "Inventory exported", importSuccess: (count: number) => `${count} records imported`, dataError: "Could not complete the inventory data operation.", storageError: "The local inventory could not be opened or saved.", storageRecovery: "Editing is disabled to protect your data. Quit and reopen PCSS; legacy data remains untouched if migration did not complete.",
   },
   zh: {
-    systemSettings: "系统设置", pageSize: "每页最多显示词条数", pageSizeHelp: "请输入 1–500 的整数。设置会保存在本机。", settingsSaved: "显示设置已保存", preferenceError: "无法保存显示设置，请重试。", pagination: "词条分页", previousPage: "上一页", nextPage: "下一页", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `第 ${page} / ${pages} 页 · 显示 ${start}–${end} 条，共 ${total} 条`,
+    systemSettings: "系统设置", displaySettings: "显示设置", databaseSettings: "数据库接入", backupSettings: "数据与备份", pageSize: "每页最多显示词条数", pageSizeHelp: "请输入 1–500 的整数。设置会保存在本机。", settingsSaved: "显示设置已保存", preferenceError: "无法保存显示设置，请重试。", pagination: "词条分页", previousPage: "上一页", nextPage: "下一页", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `第 ${page} / ${pages} 页 · 显示 ${start}–${end} 条，共 ${total} 条`,
     brand: "个人化学试剂库", localData: "库存本地保存 · 数据库按需查询", add: "添加试剂", settings: "数据库设置",
     heroLead: "你的化学试剂，", heroAccent: "清楚地", heroEnd: "放在该在的位置。", heroCopy: "记录分子结构、库存与位置。让每一次查找都有答案。",
     overview: "库存概览", records: "库存词条", unique: "种独特分子", locations: "存储地点", activeLocations: "个使用中位置", tags: "自定义标签", categories: "个分类维度",
@@ -189,7 +189,6 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageSizeDraft, setPageSizeDraft] = useState(String(DEFAULT_PAGE_SIZE));
-  const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [sort, setSort] = useState("newest");
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Chemical[] | null>(null);
@@ -372,7 +371,7 @@ export default function App() {
     if (!validPageSize(size)) return;
     try {
       window.localStorage.setItem(PAGE_SIZE_KEY, String(size));
-      setPageSize(size); setPage(1); setSystemSettingsOpen(false); setToast(t.settingsSaved);
+      setPageSize(size); setPage(1); setToast(t.settingsSaved);
     } catch { setToast(t.preferenceError); }
   }
   function changeLanguage(nextLanguage: Language) { setLanguage(nextLanguage); }
@@ -533,8 +532,7 @@ export default function App() {
             <button type="button" className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => changeLanguage("en")}>EN</button>
             <button type="button" className={language === "zh" ? "active" : ""} aria-pressed={language === "zh"} onClick={() => changeLanguage("zh")}>中文</button>
           </div>
-          <button className="system-settings-button" onClick={() => { setPageSizeDraft(String(pageSize)); setSystemSettingsOpen(true); }}>{t.systemSettings}</button>
-          {settingsSupported && <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label={t.settings} title={t.settings}>⚙</button>}
+          <button className="icon-button" onClick={() => { setPageSizeDraft(String(pageSize)); setSettingsOpen(true); }} aria-label={t.systemSettings} title={t.systemSettings}>⚙</button>
           <button className="primary-button" disabled={storageFailed} onClick={openAddModal}><Icon>＋</Icon>{t.add}</button>
         </div>
       </header>
@@ -643,22 +641,24 @@ export default function App() {
           <div className="form-actions"><button onClick={() => setDetailTarget(null)}>{t.close}</button><button className="primary-button" onClick={() => enrichChemical(detailTarget)} disabled={enrichingId === detailTarget.id}>{enrichingId === detailTarget.id ? t.enriching : t.enrich}</button></div>
         </section>
       </div>}
-      {systemSettingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSystemSettingsOpen(false); }}>
-        <section className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="system-settings-title">
-          <button className="modal-close" onClick={() => setSystemSettingsOpen(false)} aria-label={t.close}>×</button>
-          <h2 id="system-settings-title">{t.systemSettings}</h2>
-          <form onSubmit={saveDisplaySettings}><label className="settings-field"><span>{t.pageSize}</span><input type="number" min="1" max="500" step="1" required value={pageSizeDraft} onChange={(event) => setPageSizeDraft(event.target.value)} aria-describedby="page-size-help" /></label>
-            <p id="page-size-help" className="modal-intro">{t.pageSizeHelp}</p>
-            <div className="form-actions"><button type="button" onClick={() => setSystemSettingsOpen(false)}>{t.cancel}</button><button className="primary-button" type="submit" disabled={!validPageSize(Number(pageSizeDraft))}>{t.saveChanges}</button></div>
-          </form>
-        </section>
-      </div>}
       {settingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
-        <section className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title"><button className="modal-close" onClick={() => setSettingsOpen(false)} aria-label={t.close}>×</button><p className="eyebrow">DATABASE ACCESS</p><h2 id="settings-title">{t.settingsTitle}</h2><p className="modal-intro">{t.settingsIntro}</p>
+        <section className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title"><button className="modal-close" onClick={() => setSettingsOpen(false)} aria-label={t.close}>×</button><h2 id="settings-title">{t.systemSettings}</h2>
+          <section className="settings-section" aria-labelledby="display-settings-title">
+            <h3 id="display-settings-title">{t.displaySettings}</h3>
+            <form onSubmit={saveDisplaySettings}>
+              <label className="settings-field"><span>{t.pageSize}</span><input type="number" min="1" max="500" step="1" required value={pageSizeDraft} onChange={(event) => setPageSizeDraft(event.target.value)} aria-describedby="page-size-help" /></label>
+              <p id="page-size-help" className="modal-intro">{t.pageSizeHelp}</p>
+              <div className="settings-actions"><button className="primary-button" type="submit" disabled={!validPageSize(Number(pageSizeDraft))}>{t.saveChanges}</button></div>
+            </form>
+          </section>
+          {settingsSupported && <section className="settings-section" aria-labelledby="database-settings-title">
+            <h3 id="database-settings-title">{t.databaseSettings}</h3>
+            <h4>{t.settingsTitle}</h4><p className="modal-intro">{t.settingsIntro}</p>
           <div className={`key-status ${compToxConfigured ? "configured" : ""}`}><span />{compToxConfigured ? t.configured : t.notConfigured}</div>
           <label className="settings-field"><span>{t.apiKey}</span><input type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={t.apiKeyPlaceholder} /></label>
           <div className="settings-actions">{compToxConfigured && <button onClick={removeCompToxKey}>{t.removeKey}</button>}<button className="primary-button" disabled={!apiKey.trim()} onClick={saveCompToxKey}>{t.saveKey}</button></div>
-          <section className="data-management" aria-labelledby="data-title"><p className="eyebrow">DATA &amp; BACKUP</p><h3 id="data-title">{t.dataTitle}</h3><p>{t.dataIntro}</p><div><button disabled={dataBusy} onClick={() => exportInventory("json")}>{t.exportJSON}</button><button disabled={dataBusy} onClick={() => exportInventory("csv")}>{t.exportCSV}</button><button className="primary-button" disabled={dataBusy} onClick={importInventory}>{t.importData}</button></div></section>
+          </section>}
+          {settingsSupported && <section className="data-management settings-section" aria-labelledby="data-title"><h3 id="data-title">{t.backupSettings}</h3><p>{t.dataIntro}</p><div><button disabled={dataBusy} onClick={() => exportInventory("json")}>{t.exportJSON}</button><button disabled={dataBusy} onClick={() => exportInventory("csv")}>{t.exportCSV}</button><button className="primary-button" disabled={dataBusy} onClick={importInventory}>{t.importData}</button></div></section>}
         </section>
       </div>}
       {batchTagOpen && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="batch-tag-title"><h2 id="batch-tag-title">{t.batchTag}</h2><p>{t.selectedCount(selectedResults.length)}</p><form onSubmit={applyBatchTag}><label>{t.tagLabel}<input className="batch-tag-input" value={batchTag} onChange={(event) => setBatchTag(event.target.value)} placeholder={t.tagExample} list="batch-tag-suggestions" /></label><datalist id="batch-tag-suggestions">{allTags.map((tag) => <option key={tag} value={tag} />)}</datalist><div className="form-actions"><button type="button" onClick={() => setBatchTagOpen(false)}>{t.cancel}</button><button className="primary-button" disabled={storageFailed || dataBusy || !selectedResults.length || !batchTag.trim()} type="submit">{t.addTag}</button></div></form></section></div>}

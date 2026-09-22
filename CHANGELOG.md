@@ -5,6 +5,8 @@ Versioning.
 
 ## Unreleased
 
+- Consolidate display, database access, and data/backup settings in the header gear.
+
 - Show Select all only while selection mode is active.
 - Paginate inventory and filtered results, keeping selections across pages.
 - Add System settings with a locally saved page size (1–500; default 24).
