@@ -46,3 +46,13 @@ export const restoreDeleted = <T extends { id: string }>(records: T[], batch: { 
   const existing = new Set(records.map((record) => record.id));
   return [...records, ...batch.records.filter((record) => !existing.has(record.id))];
 };
+
+export const DEFAULT_PAGE_SIZE = 24;
+export const validPageSize = (value: number) => Number.isInteger(value) && value >= 1 && value <= 500;
+export const paginate = <T>(records: T[], requestedPage: number, requestedSize: number) => {
+  const size = validPageSize(requestedSize) ? requestedSize : DEFAULT_PAGE_SIZE;
+  const pages = Math.max(1, Math.ceil(records.length / size));
+  const page = Math.min(pages, Math.max(1, Math.floor(requestedPage) || 1));
+  const start = (page - 1) * size;
+  return { page, pages, start: records.length ? start + 1 : 0, end: Math.min(start + size, records.length), items: records.slice(start, start + size) };
+};

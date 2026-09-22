@@ -153,3 +153,8 @@ footer { display:flex; justify-content:space-between; gap:20px; padding:27px cla
 .card.card-selected { outline: 3px solid #35795c; outline-offset: 2px; }
 .entry-checkbox { position: absolute; z-index: 2; top: 15px; left: 15px; width: 22px; height: 22px; accent-color: #35795c; cursor: pointer; }
 .batch-tag-input { display: block; width: 100%; margin-top: 12px; padding: 12px; border: 1px solid #cbd5d1; border-radius: 8px; }
+
+.system-settings-button,.pagination button { border:1px solid var(--line); border-radius:8px; padding:9px 12px; color:var(--green); background:white; cursor:pointer; font-size:12px; }
+.pagination { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:14px; margin:20px 0; color:var(--muted); font-size:12px; }
+.pagination button:disabled { opacity:.45; cursor:default; }
+@media (max-width:560px) { .system-settings-button { padding:8px 6px; font-size:11px; }.pagination { gap:8px; }.pagination span { order:-1; flex-basis:100%; text-align:center; } }

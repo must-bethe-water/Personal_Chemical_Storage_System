@@ -85,6 +85,11 @@ The first launch transactionally migrates the earlier
 only after SQLite confirms the write. Interface language remains in WebKit's
 local preference store.
 
+Use **System settings** in the header to save the number of records per page
+(1–500, default 24). Page controls appear above and below the results. Selections
+are retained across pages; changing the filter clears selection. **Select all**
+appears after clicking **Select** and includes every page of the current results.
+
 The selection toolbar applies to the current results only, including **Select
 all** and **Delete all**. Batch tags can be existing tags or newly typed labels.
 Deleting again replaces the undo batch; importing data or quitting clears it.

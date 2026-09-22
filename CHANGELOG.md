@@ -3,6 +3,12 @@
 All notable changes to PCSS are documented here. The project follows Semantic
 Versioning.
 
+## Unreleased
+
+- Show Select all only while selection mode is active.
+- Paginate inventory and filtered results, keeping selections across pages.
+- Add System settings with a locally saved page size (1–500; default 24).
+
 ## [1.1.0] - 2026-09-22
 
 ### Added

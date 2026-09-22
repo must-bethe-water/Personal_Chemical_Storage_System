@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, DELETE_UNDO_MS, selectedInScope, addTagToRecords, restoreDeleted } from "./model";
+import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, DELETE_UNDO_MS, selectedInScope, addTagToRecords, restoreDeleted, DEFAULT_PAGE_SIZE, validPageSize, paginate } from "./model";
 
 type SourceId = "pubchem" | "chebi" | "chembl" | "comptox" | "unichem";
 type SourceResult = { id: SourceId; status: "matched" | "not-found" | "unavailable" | "key-required"; identifier?: string; url?: string };
@@ -13,6 +13,7 @@ type Language = "en" | "zh";
 type LookupState = { status: "idle" | "loading" | "success" | "not-found" | "error"; result?: LookupResult };
 
 const STORAGE_KEY = "pcss-chemicals-v1";
+const PAGE_SIZE_KEY = "pcss-page-size-v1";
 const LANGUAGE_KEY = "pcss-language-v1";
 const pubChemImage = (cas: string) => `/api/structure?cas=${encodeURIComponent(cas)}`;
 const isPubChemImage = (url: string) => url.startsWith("/api/structure?") || url.startsWith("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/");
@@ -48,6 +49,7 @@ const INITIAL_CHEMICALS: Chemical[] = [];
 const EMPTY_FORM: InventoryForm = { name: "", formula: "", cas: "", location: "", amount: "", tags: [], structureUrl: "" };
 const COPY = {
   en: {
+    systemSettings: "System settings", pageSize: "Records per page", pageSizeHelp: "Enter a whole number from 1 to 500. This setting is saved on this Mac.", settingsSaved: "Display settings saved", preferenceError: "Could not save display settings. Please try again.", pagination: "Inventory pages", previousPage: "Previous", nextPage: "Next", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `Page ${page} of ${pages} · ${start}–${end} of ${total}`,
     brand: "Personal chemical storage", localData: "Local inventory · on-demand sources", add: "Add chemical", settings: "Database settings",
     heroLead: "Your chemical inventory,", heroAccent: "clearly", heroEnd: "stored where it belongs.", heroCopy: "Track molecular structures, quantities, and locations. Find every reagent with confidence.",
     overview: "Inventory overview", records: "Inventory records", unique: "unique molecules", locations: "Storage locations", activeLocations: "active locations", tags: "Custom tags", categories: "classification groups",
@@ -64,13 +66,14 @@ const COPY = {
     lookupHint: "Enter an English name or valid CAS number to auto-fill the matching identity.", lookupLoading: "Resolving compound identity…", lookupSuccess: (count: number, cid?: number, cas?: string) => `${count} sources matched${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "No matching compound with a confirmed CAS number was found.", lookupError: "Sources are temporarily unavailable. You can enter the details manually.",
     untagged: "Untagged", notSpecified: "Not specified",
     duplicate: "Duplicate CAS number", duplicateCreateTitle: "Create another entry?", duplicateCreateCopy: (cas: string, count: number) => `${count} existing ${count === 1 ? "entry uses" : "entries use"} CAS ${cas}. You can still create this entry and manage the group later.`, existingEntries: "Existing entries", createAnyway: "Create anyway", reviewDuplicates: (count: number) => `View ${count} related entries`, duplicatesTitle: (cas: string) => `Entries with CAS ${cas}`, duplicatesCopy: "These records are linked because they share the same CAS number. Select the record whose identity and structure should be retained.", keepAsPrimary: "Keep as primary", mergeEntries: (count: number) => `Merge ${count} entries`, mergeHelp: "Locations, quantities and tags are retained; no quantities are mathematically added.", mergedToast: (count: number) => `${count} entries merged`, addedToast: (name: string) => `${name} added`, deletedToast: (name: string) => `${name} deleted`,
-    select: "Select", selectAll: "Select all", deselect: "Cancel selection", deleteAll: "Delete all", deleteSelected: "Delete selected", undoDelete: "Undo deletion", batchTag: "Add tag", scopeHint: "Actions apply only to the current results.", selectedCount: (n: number) => `${n} selected`, batchDeleteTitle: (n: number) => `Delete ${n} records?`, restored: "Deletion undone", tagged: "Tag added to selected records", undoHint: "Latest deletion: undo within 30 minutes, before quitting or deleting again.",
+    select: "Select", selectAll: "Select all", deselect: "Cancel selection", deleteAll: "Delete all", deleteSelected: "Delete selected", undoDelete: "Undo deletion", batchTag: "Add tag", scopeHint: "Select all and Delete all apply to all pages of the current results. Selection is kept when changing pages.", selectedCount: (n: number) => `${n} selected`, batchDeleteTitle: (n: number) => `Delete ${n} records?`, restored: "Deletion undone", tagged: "Tag added to selected records", undoHint: "Latest deletion: undo within 30 minutes, before quitting or deleting again.",
     deleteTitle: (name: string) => `Delete “${name}”?`, deleteCopy: "Undo the latest deletion within 30 minutes while this app remains open. Another deletion replaces it. Automatic backups expire after 30 days.", confirmDelete: "Delete record", structureAlt: (name: string) => `2D chemical structure of ${name}`,
     sources: "Database sources", sourceDetails: "Source details", enrich: "Check / refresh sources", enriching: "Checking sources…", noSources: "Not checked yet", matched: "Matched", notFound: "Not found", unavailableSource: "Unavailable", keyRequired: "API key required", molecularWeight: "Molecular weight", exactMass: "Exact mass", inchiKey: "InChIKey", smiles: "Canonical SMILES", lastChecked: "Last checked", openRecord: "Open official record", editRecord: "Edit inventory record", editIntro: "Chemical identity is read-only. Only the inventory fields below can be changed.", readonlyIdentity: "Read-only chemical identity", saveChanges: "Save changes", updatedToast: (name: string) => `${name} updated`,
     settingsTitle: "EPA CompTox access", settingsIntro: "CompTox requires a free EPA CCTE API key. In the Mac app it is stored only in macOS Keychain.", apiKey: "EPA API key", apiKeyPlaceholder: "Paste API key", saveKey: "Save to Keychain", removeKey: "Remove saved key", configured: "Key configured", notConfigured: "No key configured", savedKey: "CompTox key saved", removedKey: "CompTox key removed", settingsError: "Could not update Keychain.",
     dataTitle: "Local inventory data", dataIntro: "Inventory is stored in SQLite under Application Support. Automatic JSON snapshots retain at most 20 changes for up to 30 days.", exportJSON: "Export JSON backup", exportCSV: "Export CSV", importData: "Import JSON / CSV", exportSuccess: "Inventory exported", importSuccess: (count: number) => `${count} records imported`, dataError: "Could not complete the inventory data operation.", storageError: "The local inventory could not be opened or saved.", storageRecovery: "Editing is disabled to protect your data. Quit and reopen PCSS; legacy data remains untouched if migration did not complete.",
   },
   zh: {
+    systemSettings: "系统设置", pageSize: "每页最多显示词条数", pageSizeHelp: "请输入 1–500 的整数。设置会保存在本机。", settingsSaved: "显示设置已保存", preferenceError: "无法保存显示设置，请重试。", pagination: "词条分页", previousPage: "上一页", nextPage: "下一页", pageSummary: (page: number, pages: number, start: number, end: number, total: number) => `第 ${page} / ${pages} 页 · 显示 ${start}–${end} 条，共 ${total} 条`,
     brand: "个人化学试剂库", localData: "库存本地保存 · 数据库按需查询", add: "添加试剂", settings: "数据库设置",
     heroLead: "你的化学试剂，", heroAccent: "清楚地", heroEnd: "放在该在的位置。", heroCopy: "记录分子结构、库存与位置。让每一次查找都有答案。",
     overview: "库存概览", records: "库存词条", unique: "种独特分子", locations: "存储地点", activeLocations: "个使用中位置", tags: "自定义标签", categories: "个分类维度",
@@ -87,7 +90,7 @@ const COPY = {
     lookupHint: "输入英文名称或有效 CAS 号后，将自动补全对应身份信息。", lookupLoading: "正在解析化合物身份…", lookupSuccess: (count: number, cid?: number, cas?: string) => `已匹配 ${count} 个来源${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "未找到具有可确认 CAS 号的对应化合物。", lookupError: "数据库暂时不可用，你仍可手动填写。",
     untagged: "未加标签", notSpecified: "未填写",
     duplicate: "CAS 号重复", duplicateCreateTitle: "仍要创建这个词条吗？", duplicateCreateCopy: (cas: string, count: number) => `库中已有 ${count} 个词条使用 CAS ${cas}。你仍可继续创建，之后再集中查看和合并。`, existingEntries: "已有词条", createAnyway: "仍然创建", reviewDuplicates: (count: number) => `查看 ${count} 个关联词条`, duplicatesTitle: (cas: string) => `CAS ${cas} 的关联词条`, duplicatesCopy: "这些记录因 CAS 号相同而自动关联。请选择要保留其名称、结构与身份信息的主词条。", keepAsPrimary: "保留为主词条", mergeEntries: (count: number) => `合并 ${count} 个词条`, mergeHelp: "存储地点、数量和标签会被保留，不会对不同单位的数量进行数学相加。", mergedToast: (count: number) => `已合并 ${count} 个词条`, addedToast: (name: string) => `已添加 ${name}`, deletedToast: (name: string) => `已删除 ${name}`,
-    select: "选择", selectAll: "全选", deselect: "取消选择", deleteAll: "全部删除", deleteSelected: "删除所选", undoDelete: "撤销删除", batchTag: "添加 tag", scopeHint: "所有批量操作仅作用于当前筛选结果。", selectedCount: (n: number) => `已选择 ${n} 个词条`, batchDeleteTitle: (n: number) => `删除 ${n} 个词条？`, restored: "已撤销删除", tagged: "已为所选词条添加标签", undoHint: "最近一次删除可在 30 分钟内撤销；再次删除或退出应用后失效。",
+    select: "选择", selectAll: "全选", deselect: "取消选择", deleteAll: "全部删除", deleteSelected: "删除所选", undoDelete: "撤销删除", batchTag: "添加 tag", scopeHint: "全选和全部删除作用于当前筛选结果的所有页面；翻页会保留已选词条。", selectedCount: (n: number) => `已选择 ${n} 个词条`, batchDeleteTitle: (n: number) => `删除 ${n} 个词条？`, restored: "已撤销删除", tagged: "已为所选词条添加标签", undoHint: "最近一次删除可在 30 分钟内撤销；再次删除或退出应用后失效。",
     deleteTitle: (name: string) => `删除“${name}”？`, deleteCopy: "可在 30 分钟内撤销最近一次删除；再次删除或退出应用后无法撤销。自动备份保留不超过 30 天。", confirmDelete: "确认删除", structureAlt: (name: string) => `${name}的二维化学结构`,
     sources: "数据库来源", sourceDetails: "来源详情", enrich: "查询 / 刷新来源", enriching: "正在查询…", noSources: "尚未查询", matched: "已匹配", notFound: "未找到", unavailableSource: "暂不可用", keyRequired: "需要 API 密钥", molecularWeight: "分子量", exactMass: "精确质量", inchiKey: "InChIKey", smiles: "规范 SMILES", lastChecked: "最近查询", openRecord: "打开官方记录", editRecord: "编辑库存词条", editIntro: "化学身份信息仅供展示，仅可修改下方三个库存属性。", readonlyIdentity: "只读化学身份", saveChanges: "保存修改", updatedToast: (name: string) => `已更新 ${name}`,
     settingsTitle: "EPA CompTox 接入", settingsIntro: "CompTox 需要免费的 EPA CCTE API 密钥；在 Mac 程序中，密钥仅保存于 macOS 钥匙串。", apiKey: "EPA API 密钥", apiKeyPlaceholder: "粘贴 API 密钥", saveKey: "保存到钥匙串", removeKey: "删除已存密钥", configured: "密钥已配置", notConfigured: "尚未配置密钥", savedKey: "CompTox 密钥已保存", removedKey: "CompTox 密钥已删除", settingsError: "无法更新钥匙串。",
@@ -183,6 +186,10 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [field, setField] = useState("all");
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSizeDraft, setPageSizeDraft] = useState(String(DEFAULT_PAGE_SIZE));
+  const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [sort, setSort] = useState("newest");
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Chemical[] | null>(null);
@@ -218,6 +225,8 @@ export default function App() {
   /* Loading persisted client data after hydration intentionally updates state. */
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    const savedSize = Number(window.localStorage.getItem(PAGE_SIZE_KEY));
+    if (validPageSize(savedSize)) setPageSize(savedSize);
     const savedLanguage = window.localStorage.getItem(LANGUAGE_KEY);
     if (savedLanguage === "en" || savedLanguage === "zh") setLanguage(savedLanguage);
     const loadInventory = async () => {
@@ -256,6 +265,8 @@ export default function App() {
     window.addEventListener("focus", expire);
     return () => { window.clearTimeout(timer); window.removeEventListener("focus", expire); };
   }, [deletedBatch]);
+  useEffect(() => { setPage(1); }, [query, field, selectedFilterTags, sort, pageSize]);
+  useEffect(() => { setPage((current) => Math.min(current, Math.max(1, Math.ceil(chemicals.length / pageSize)))); }, [chemicals.length, pageSize]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!hydrated) return;
@@ -346,11 +357,24 @@ export default function App() {
     });
   }, [chemicals, query, field, sort, locale, selectedTags]);
 
+  const paged = paginate(results, page, pageSize);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { if (page !== paged.page) setPage(paged.page); }, [page, paged.page]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const locations = new Set(chemicals.map((item) => item.location)).size;
   const selectedResults = selectedInScope(results, selectedIds);
   const tags = allTags.length;
   const duplicateGroup = duplicateCas ? chemicals.filter((item) => item.cas.trim() === duplicateCas) : [];
 
+  function saveDisplaySettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const size = Number(pageSizeDraft);
+    if (!validPageSize(size)) return;
+    try {
+      window.localStorage.setItem(PAGE_SIZE_KEY, String(size));
+      setPageSize(size); setPage(1); setSystemSettingsOpen(false); setToast(t.settingsSaved);
+    } catch { setToast(t.preferenceError); }
+  }
   function changeLanguage(nextLanguage: Language) { setLanguage(nextLanguage); }
   function markStructureNotFound(id: string) {
     if (storageFailed) return;
@@ -509,6 +533,7 @@ export default function App() {
             <button type="button" className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => changeLanguage("en")}>EN</button>
             <button type="button" className={language === "zh" ? "active" : ""} aria-pressed={language === "zh"} onClick={() => changeLanguage("zh")}>中文</button>
           </div>
+          <button className="system-settings-button" onClick={() => { setPageSizeDraft(String(pageSize)); setSystemSettingsOpen(true); }}>{t.systemSettings}</button>
           {settingsSupported && <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label={t.settings} title={t.settings}>⚙</button>}
           <button className="primary-button" disabled={storageFailed} onClick={openAddModal}><Icon>＋</Icon>{t.add}</button>
         </div>
@@ -533,15 +558,20 @@ export default function App() {
         {field === "tag" && <div className="tag-filter-panel"><div><strong>{t.tagLegend}</strong><small>{t.tagLegendCopy}</small></div><div className="tag-filter-list">{allTags.length ? allTags.map((tag) => <button key={tag.toLocaleLowerCase()} className={selectedTagKeys.has(tag.toLocaleLowerCase()) ? "active" : ""} aria-pressed={selectedTagKeys.has(tag.toLocaleLowerCase())} onClick={() => toggleTagFilter(tag)}><span>✓</span>{tag}</button>) : <em>{t.noTags}</em>}</div>{selectedTags.length > 0 && <button className="clear-tag-filter" onClick={() => { setQuery(""); setSelectedFilterTags([]); }}>{t.clearTags}</button>}</div>}
         <div className="bulk-toolbar" role="group" aria-label={t.select}>
           <button disabled={!hydrated || storageFailed || dataBusy || !results.length} aria-pressed={selecting} onClick={() => setSelecting(true)}>{t.select}</button>
-          <button disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => { setSelecting(true); setSelectedIds(results.map((item) => item.id)); }}>{t.selectAll}</button>
+          {selecting && <button disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setSelectedIds(results.map((item) => item.id))}>{t.selectAll}</button>}
           <button disabled={!selecting} onClick={() => { setSelecting(false); setSelectedIds([]); }}>{t.deselect}</button>
           <button className="bulk-danger" disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setDeleteTarget(results)}>{t.deleteAll} ({results.length})</button>
           {selecting && <><span>{t.selectedCount(selectedResults.length)}</span><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => setDeleteTarget(selectedResults)}>{t.deleteSelected}</button><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => { setBatchTag(""); setBatchTagOpen(true); }}>{t.batchTag}</button></>}
           <button disabled={!deletedBatch || storageFailed || dataBusy} onClick={undoDelete}>{t.undoDelete}{deletedBatch ? ` (${deletedBatch.records.length})` : ""}</button>
           <small>{t.scopeHint}{deletedBatch && ` ${t.undoHint}`}</small>
         </div>
+        {results.length > 0 && <nav className="pagination" aria-label={t.pagination}>
+          <button disabled={paged.page === 1} onClick={() => setPage(paged.page - 1)}>{t.previousPage}</button>
+          <span aria-live="polite">{t.pageSummary(paged.page, paged.pages, paged.start, paged.end, results.length)}</span>
+          <button disabled={paged.page === paged.pages} onClick={() => setPage(paged.page + 1)}>{t.nextPage}</button>
+        </nav>}
         {results.length > 0 ? (
-          <div className="cards">{results.map((chemical) => (
+          <div className="cards">{paged.items.map((chemical) => (
             <div className={`card${selecting && selectedIds.includes(chemical.id) ? " card-selected" : ""}`} key={chemical.id} role="button" tabIndex={0} aria-label={`${selecting ? t.select : t.editRecord}: ${chemical.name}`} aria-pressed={selecting ? selectedIds.includes(chemical.id) : undefined} onClick={() => selecting ? toggleSelection(chemical.id) : openEdit(chemical)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); if (selecting) toggleSelection(chemical.id); else openEdit(chemical); } }}>
               <div className="structure-panel">
                 <ChemicalStructure chemical={chemical} alt={t.structureAlt(chemical.name)} unavailable={t.unavailable} onNotFound={markStructureNotFound} />
@@ -557,6 +587,11 @@ export default function App() {
             </div>
           ))}</div>
         ) : chemicals.length === 0 ? <div className="empty-state"><span>⌬</span><h3>{t.noInventory}</h3><p>{t.noInventoryCopy}</p><button disabled={storageFailed} onClick={openAddModal}>{t.addFirst}</button></div> : <div className="empty-state"><span>⌬</span><h3>{t.noMatch}</h3><p>{t.noMatchCopy}</p><button onClick={() => { setQuery(""); setSelectedFilterTags([]); setField("all"); }}>{t.clearFilters}</button></div>}
+        {results.length > 0 && <nav className="pagination" aria-label={t.pagination}>
+          <button disabled={paged.page === 1} onClick={() => setPage(paged.page - 1)}>{t.previousPage}</button>
+          <span aria-live="polite">{t.pageSummary(paged.page, paged.pages, paged.start, paged.end, results.length)}</span>
+          <button disabled={paged.page === paged.pages} onClick={() => setPage(paged.page + 1)}>{t.nextPage}</button>
+        </nav>}
       </section>
       <footer><span>PCSS / PERSONAL CHEMICAL STORAGE SYSTEM</span><span>{t.safety}</span></footer>
       {modalOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalOpen(false); }}>
@@ -606,6 +641,16 @@ export default function App() {
             <div><dt>{t.lastChecked}</dt><dd>{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(detailTarget.database.accessedAt))}</dd></div>
           </dl>}
           <div className="form-actions"><button onClick={() => setDetailTarget(null)}>{t.close}</button><button className="primary-button" onClick={() => enrichChemical(detailTarget)} disabled={enrichingId === detailTarget.id}>{enrichingId === detailTarget.id ? t.enriching : t.enrich}</button></div>
+        </section>
+      </div>}
+      {systemSettingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSystemSettingsOpen(false); }}>
+        <section className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="system-settings-title">
+          <button className="modal-close" onClick={() => setSystemSettingsOpen(false)} aria-label={t.close}>×</button>
+          <h2 id="system-settings-title">{t.systemSettings}</h2>
+          <form onSubmit={saveDisplaySettings}><label className="settings-field"><span>{t.pageSize}</span><input type="number" min="1" max="500" step="1" required value={pageSizeDraft} onChange={(event) => setPageSizeDraft(event.target.value)} aria-describedby="page-size-help" /></label>
+            <p id="page-size-help" className="modal-intro">{t.pageSizeHelp}</p>
+            <div className="form-actions"><button type="button" onClick={() => setSystemSettingsOpen(false)}>{t.cancel}</button><button className="primary-button" type="submit" disabled={!validPageSize(Number(pageSizeDraft))}>{t.saveChanges}</button></div>
+          </form>
         </section>
       </div>}
       {settingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
