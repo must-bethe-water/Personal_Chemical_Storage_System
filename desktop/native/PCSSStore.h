@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithRootURL:(NSURL *)rootURL error:(NSError **)error;
 - (nullable NSArray<NSDictionary *> *)allChemicals:(NSError **)error;
 - (BOOL)isInventoryInitialized;
+- (void)purgeExpiredFiles;
 - (BOOL)replaceChemicals:(NSArray *)chemicals createBackup:(BOOL)createBackup error:(NSError **)error;
 - (nullable NSData *)exportDataForFormat:(NSString *)format error:(NSError **)error;
 - (nullable NSArray<NSDictionary *> *)chemicalsFromImportData:(NSData *)data format:(NSString *)format error:(NSError **)error;

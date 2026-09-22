@@ -35,7 +35,11 @@ locations, and custom tags are not included in these lookup requests.
 ## Deletion
 
 Deleting an entry removes it from the live database, but it may remain in one
-of the rotating local backups until that snapshot is replaced. To erase all
+of the rotating local backups until that snapshot is replaced or reaches 30
+days of age. The latest deleted batch is held in memory for up to 30 minutes
+for undo; another deletion, an import, or app exit clears it. Expired backups
+and unused structure images older than 30 days are cleaned at startup and
+hourly while the app is running. Exported files are managed by the user. To erase all
 PCSS inventory data, quit PCSS and remove
 `~/Library/Application Support/PCSS/`; remove the CompTox key from PCSS settings
 or macOS Keychain separately.

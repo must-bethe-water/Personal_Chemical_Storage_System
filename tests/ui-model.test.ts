@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags } from "../desktop/ui/model.ts";
+import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, selectedInScope, addTagToRecords, restoreDeleted, DELETE_UNDO_MS } from "../desktop/ui/model.ts";
 
 test("CAS validation checks format and checksum", () => {
   assert.equal(isValidCas("65-85-0"), true);
@@ -18,4 +18,30 @@ test("legacy single-tag records migrate without overriding modern tags", () => {
   assert.deepEqual(migrateStoredTags(undefined, "Acid, Dry"), ["Acid", "Dry"]);
   assert.deepEqual(migrateStoredTags(["Modern"], "Legacy"), ["Modern"]);
   assert.deepEqual(migrateStoredTags(["Valid", 3], "Fallback"), ["Fallback"]);
+});
+
+const records = [
+  { id: "a", tags: ["Acid"], amount: "250 g", database: { sources: ["pubchem"] } },
+  { id: "b", tags: [], amount: "2 L", database: { sources: [] } },
+  { id: "c", tags: ["Dry"], amount: "5 g", database: { sources: [] } },
+];
+test("batch targets stay inside filtered results, including stale selection IDs", () => {
+  const scope = records.slice(0, 2);
+  assert.deepEqual(selectedInScope(scope, ["b", "c", "missing"]), [records[1]]);
+  assert.deepEqual(selectedInScope([], ["a"]), []);
+});
+test("batch tags preserve fields and outside records, deduplicate and accept new tags", () => {
+  const updated = addTagToRecords(records, ["a", "b"], " acid ");
+  assert.deepEqual(updated[0], records[0]);
+  assert.deepEqual(updated[1].tags, ["acid"]);
+  assert.equal(updated[2], records[2]);
+  assert.deepEqual(addTagToRecords(updated, ["b"], "New tag")[1].tags, ["acid", "New tag"]);
+});
+test("undo restores an entire batch losslessly without overwriting subsequent edits", () => {
+  const edited = { ...records[2], amount: "10 g" };
+  const batch = { records: records.slice(0, 2), expiresAt: DELETE_UNDO_MS };
+  assert.deepEqual(restoreDeleted([edited], batch, 1), [edited, records[0], records[1]]);
+  assert.deepEqual(restoreDeleted([records[0]], batch, 1), [records[0], records[1]]);
+  assert.deepEqual(restoreDeleted([], batch, DELETE_UNDO_MS), []);
+  assert.deepEqual(restoreDeleted([], batch, DELETE_UNDO_MS + 1), []);
 });

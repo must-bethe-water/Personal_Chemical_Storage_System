@@ -561,6 +561,10 @@ static NSString *const PCSSLegacyCompToxKeychainService = @"com.pcss.inventory.c
 
     NSError *storeError = nil;
     self.store = [[PCSSStore alloc] initWithRootURL:PCSSStore.defaultRootURL error:&storeError];
+    PCSSStore *retentionStore = self.store;
+    [NSTimer scheduledTimerWithTimeInterval:3600 repeats:YES block:^(NSTimer *timer) {
+        [retentionStore purgeExpiredFiles];
+    }];
     if (!self.store) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"PCSS could not open its local inventory";

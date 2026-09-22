@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags } from "./model";
+import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, DELETE_UNDO_MS, selectedInScope, addTagToRecords, restoreDeleted } from "./model";
 
 type SourceId = "pubchem" | "chebi" | "chembl" | "comptox" | "unichem";
 type SourceResult = { id: SourceId; status: "matched" | "not-found" | "unavailable" | "key-required"; identifier?: string; url?: string };
@@ -64,10 +64,11 @@ const COPY = {
     lookupHint: "Enter an English name or valid CAS number to auto-fill the matching identity.", lookupLoading: "Resolving compound identity…", lookupSuccess: (count: number, cid?: number, cas?: string) => `${count} sources matched${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "No matching compound with a confirmed CAS number was found.", lookupError: "Sources are temporarily unavailable. You can enter the details manually.",
     untagged: "Untagged", notSpecified: "Not specified",
     duplicate: "Duplicate CAS number", duplicateCreateTitle: "Create another entry?", duplicateCreateCopy: (cas: string, count: number) => `${count} existing ${count === 1 ? "entry uses" : "entries use"} CAS ${cas}. You can still create this entry and manage the group later.`, existingEntries: "Existing entries", createAnyway: "Create anyway", reviewDuplicates: (count: number) => `View ${count} related entries`, duplicatesTitle: (cas: string) => `Entries with CAS ${cas}`, duplicatesCopy: "These records are linked because they share the same CAS number. Select the record whose identity and structure should be retained.", keepAsPrimary: "Keep as primary", mergeEntries: (count: number) => `Merge ${count} entries`, mergeHelp: "Locations, quantities and tags are retained; no quantities are mathematically added.", mergedToast: (count: number) => `${count} entries merged`, addedToast: (name: string) => `${name} added`, deletedToast: (name: string) => `${name} deleted`,
-    deleteTitle: (name: string) => `Delete “${name}”?`, deleteCopy: "This record will be permanently removed from this app.", confirmDelete: "Delete record", structureAlt: (name: string) => `2D chemical structure of ${name}`,
+    select: "Select", selectAll: "Select all", deselect: "Cancel selection", deleteAll: "Delete all", deleteSelected: "Delete selected", undoDelete: "Undo deletion", batchTag: "Add tag", scopeHint: "Actions apply only to the current results.", selectedCount: (n: number) => `${n} selected`, batchDeleteTitle: (n: number) => `Delete ${n} records?`, restored: "Deletion undone", tagged: "Tag added to selected records", undoHint: "Latest deletion: undo within 30 minutes, before quitting or deleting again.",
+    deleteTitle: (name: string) => `Delete “${name}”?`, deleteCopy: "Undo the latest deletion within 30 minutes while this app remains open. Another deletion replaces it. Automatic backups expire after 30 days.", confirmDelete: "Delete record", structureAlt: (name: string) => `2D chemical structure of ${name}`,
     sources: "Database sources", sourceDetails: "Source details", enrich: "Check / refresh sources", enriching: "Checking sources…", noSources: "Not checked yet", matched: "Matched", notFound: "Not found", unavailableSource: "Unavailable", keyRequired: "API key required", molecularWeight: "Molecular weight", exactMass: "Exact mass", inchiKey: "InChIKey", smiles: "Canonical SMILES", lastChecked: "Last checked", openRecord: "Open official record", editRecord: "Edit inventory record", editIntro: "Chemical identity is read-only. Only the inventory fields below can be changed.", readonlyIdentity: "Read-only chemical identity", saveChanges: "Save changes", updatedToast: (name: string) => `${name} updated`,
     settingsTitle: "EPA CompTox access", settingsIntro: "CompTox requires a free EPA CCTE API key. In the Mac app it is stored only in macOS Keychain.", apiKey: "EPA API key", apiKeyPlaceholder: "Paste API key", saveKey: "Save to Keychain", removeKey: "Remove saved key", configured: "Key configured", notConfigured: "No key configured", savedKey: "CompTox key saved", removedKey: "CompTox key removed", settingsError: "Could not update Keychain.",
-    dataTitle: "Local inventory data", dataIntro: "Inventory is stored in SQLite under Application Support. Automatic JSON snapshots retain the 20 most recent changes.", exportJSON: "Export JSON backup", exportCSV: "Export CSV", importData: "Import JSON / CSV", exportSuccess: "Inventory exported", importSuccess: (count: number) => `${count} records imported`, dataError: "Could not complete the inventory data operation.", storageError: "The local inventory could not be opened or saved.", storageRecovery: "Editing is disabled to protect your data. Quit and reopen PCSS; legacy data remains untouched if migration did not complete.",
+    dataTitle: "Local inventory data", dataIntro: "Inventory is stored in SQLite under Application Support. Automatic JSON snapshots retain at most 20 changes for up to 30 days.", exportJSON: "Export JSON backup", exportCSV: "Export CSV", importData: "Import JSON / CSV", exportSuccess: "Inventory exported", importSuccess: (count: number) => `${count} records imported`, dataError: "Could not complete the inventory data operation.", storageError: "The local inventory could not be opened or saved.", storageRecovery: "Editing is disabled to protect your data. Quit and reopen PCSS; legacy data remains untouched if migration did not complete.",
   },
   zh: {
     brand: "个人化学试剂库", localData: "库存本地保存 · 数据库按需查询", add: "添加试剂", settings: "数据库设置",
@@ -86,10 +87,11 @@ const COPY = {
     lookupHint: "输入英文名称或有效 CAS 号后，将自动补全对应身份信息。", lookupLoading: "正在解析化合物身份…", lookupSuccess: (count: number, cid?: number, cas?: string) => `已匹配 ${count} 个来源${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "未找到具有可确认 CAS 号的对应化合物。", lookupError: "数据库暂时不可用，你仍可手动填写。",
     untagged: "未加标签", notSpecified: "未填写",
     duplicate: "CAS 号重复", duplicateCreateTitle: "仍要创建这个词条吗？", duplicateCreateCopy: (cas: string, count: number) => `库中已有 ${count} 个词条使用 CAS ${cas}。你仍可继续创建，之后再集中查看和合并。`, existingEntries: "已有词条", createAnyway: "仍然创建", reviewDuplicates: (count: number) => `查看 ${count} 个关联词条`, duplicatesTitle: (cas: string) => `CAS ${cas} 的关联词条`, duplicatesCopy: "这些记录因 CAS 号相同而自动关联。请选择要保留其名称、结构与身份信息的主词条。", keepAsPrimary: "保留为主词条", mergeEntries: (count: number) => `合并 ${count} 个词条`, mergeHelp: "存储地点、数量和标签会被保留，不会对不同单位的数量进行数学相加。", mergedToast: (count: number) => `已合并 ${count} 个词条`, addedToast: (name: string) => `已添加 ${name}`, deletedToast: (name: string) => `已删除 ${name}`,
-    deleteTitle: (name: string) => `删除“${name}”？`, deleteCopy: "这个词条会从当前 App 的库存中永久移除。", confirmDelete: "确认删除", structureAlt: (name: string) => `${name}的二维化学结构`,
+    select: "选择", selectAll: "全选", deselect: "取消选择", deleteAll: "全部删除", deleteSelected: "删除所选", undoDelete: "撤销删除", batchTag: "添加 tag", scopeHint: "所有批量操作仅作用于当前筛选结果。", selectedCount: (n: number) => `已选择 ${n} 个词条`, batchDeleteTitle: (n: number) => `删除 ${n} 个词条？`, restored: "已撤销删除", tagged: "已为所选词条添加标签", undoHint: "最近一次删除可在 30 分钟内撤销；再次删除或退出应用后失效。",
+    deleteTitle: (name: string) => `删除“${name}”？`, deleteCopy: "可在 30 分钟内撤销最近一次删除；再次删除或退出应用后无法撤销。自动备份保留不超过 30 天。", confirmDelete: "确认删除", structureAlt: (name: string) => `${name}的二维化学结构`,
     sources: "数据库来源", sourceDetails: "来源详情", enrich: "查询 / 刷新来源", enriching: "正在查询…", noSources: "尚未查询", matched: "已匹配", notFound: "未找到", unavailableSource: "暂不可用", keyRequired: "需要 API 密钥", molecularWeight: "分子量", exactMass: "精确质量", inchiKey: "InChIKey", smiles: "规范 SMILES", lastChecked: "最近查询", openRecord: "打开官方记录", editRecord: "编辑库存词条", editIntro: "化学身份信息仅供展示，仅可修改下方三个库存属性。", readonlyIdentity: "只读化学身份", saveChanges: "保存修改", updatedToast: (name: string) => `已更新 ${name}`,
     settingsTitle: "EPA CompTox 接入", settingsIntro: "CompTox 需要免费的 EPA CCTE API 密钥；在 Mac 程序中，密钥仅保存于 macOS 钥匙串。", apiKey: "EPA API 密钥", apiKeyPlaceholder: "粘贴 API 密钥", saveKey: "保存到钥匙串", removeKey: "删除已存密钥", configured: "密钥已配置", notConfigured: "尚未配置密钥", savedKey: "CompTox 密钥已保存", removedKey: "CompTox 密钥已删除", settingsError: "无法更新钥匙串。",
-    dataTitle: "本地库存数据", dataIntro: "库存保存在 Application Support 中的 SQLite 数据库里；系统自动保留最近 20 次修改的 JSON 快照。", exportJSON: "导出 JSON 备份", exportCSV: "导出 CSV", importData: "导入 JSON / CSV", exportSuccess: "库存已导出", importSuccess: (count: number) => `已导入 ${count} 个词条`, dataError: "无法完成库存数据操作。", storageError: "无法打开或保存本地库存。", storageRecovery: "为保护数据，编辑功能已停用。请退出并重新打开 PCSS；如果迁移没有完成，旧数据仍会原样保留。",
+    dataTitle: "本地库存数据", dataIntro: "库存保存在 Application Support 中的 SQLite 数据库里；自动 JSON 快照最多保留最近 20 次修改，30 天后清理。", exportJSON: "导出 JSON 备份", exportCSV: "导出 CSV", importData: "导入 JSON / CSV", exportSuccess: "库存已导出", importSuccess: (count: number) => `已导入 ${count} 个词条`, dataError: "无法完成库存数据操作。", storageError: "无法打开或保存本地库存。", storageRecovery: "为保护数据，编辑功能已停用。请退出并重新打开 PCSS；如果迁移没有完成，旧数据仍会原样保留。",
   },
 } as const;
 
@@ -183,7 +185,12 @@ export default function App() {
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
   const [sort, setSort] = useState("newest");
   const [modalOpen, setModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Chemical | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Chemical[] | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchTagOpen, setBatchTagOpen] = useState(false);
+  const [batchTag, setBatchTag] = useState("");
+  const [deletedBatch, setDeletedBatch] = useState<{ records: Chemical[]; expiresAt: number } | null>(null);
   const [pendingDuplicate, setPendingDuplicate] = useState<{ chemical: Chemical; matches: Chemical[] } | null>(null);
   const [duplicateCas, setDuplicateCas] = useState("");
   const [primaryId, setPrimaryId] = useState("");
@@ -241,6 +248,14 @@ export default function App() {
     };
     void loadInventory();
   }, []);
+  useEffect(() => { setSelectedIds([]); setSelecting(false); setBatchTagOpen(false); setDeleteTarget(null); }, [query, field, selectedFilterTags]);
+  useEffect(() => {
+    if (!deletedBatch) return;
+    const expire = () => { if (Date.now() >= deletedBatch.expiresAt) setDeletedBatch(null); };
+    const timer = window.setTimeout(expire, Math.max(0, deletedBatch.expiresAt - Date.now()));
+    window.addEventListener("focus", expire);
+    return () => { window.clearTimeout(timer); window.removeEventListener("focus", expire); };
+  }, [deletedBatch]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!hydrated) return;
@@ -332,6 +347,7 @@ export default function App() {
   }, [chemicals, query, field, sort, locale, selectedTags]);
 
   const locations = new Set(chemicals.map((item) => item.location)).size;
+  const selectedResults = selectedInScope(results, selectedIds);
   const tags = allTags.length;
   const duplicateGroup = duplicateCas ? chemicals.filter((item) => item.cas.trim() === duplicateCas) : [];
 
@@ -352,8 +368,31 @@ export default function App() {
     addChemical(chemical);
   }
   function confirmDelete() {
-    if (!deleteTarget || storageFailed) return;
-    setChemicals((current) => current.filter((item) => item.id !== deleteTarget.id)); setToast(t.deletedToast(deleteTarget.name)); setDeleteTarget(null);
+    if (!deleteTarget || storageFailed || dataBusy || !hydrated) return;
+    const records = selectedInScope(chemicals, deleteTarget.map((item) => item.id));
+    if (!records.length) { setDeleteTarget(null); return; }
+    const ids = new Set(records.map((item) => item.id));
+    setDeletedBatch({ records, expiresAt: Date.now() + DELETE_UNDO_MS });
+    setChemicals((current) => current.filter((item) => !ids.has(item.id)));
+    setSelectedIds([]); setSelecting(false); setDeleteTarget(null);
+    setDetailTarget(null); setEditTarget(null);
+  }
+  function undoDelete() {
+    if (!deletedBatch || storageFailed || dataBusy) return;
+    if (Date.now() < deletedBatch.expiresAt) {
+      setChemicals((current) => restoreDeleted(current, deletedBatch, Date.now()));
+      setToast(t.restored);
+    }
+    setDeletedBatch(null);
+  }
+  function toggleSelection(id: string) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+  function applyBatchTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (storageFailed || dataBusy || !batchTag.trim()) return;
+    setChemicals((current) => addTagToRecords(current, selectedResults.map((item) => item.id), batchTag));
+    setBatchTagOpen(false); setToast(t.tagged);
   }
   function openAddModal() { setForm(EMPTY_FORM); setTagInput(""); setLookup({ status: "idle" }); setModalOpen(true); }
   function openDuplicateGroup(cas: string, preferredId?: string) {
@@ -435,6 +474,7 @@ export default function App() {
         const imported = result.chemicals.map(migrateChemical);
         lastPersistedRef.current = JSON.stringify(imported);
         setChemicals(imported);
+        setDeletedBatch(null); setSelectedIds([]); setSelecting(false);
         setToast(t.importSuccess(result.imported ?? 0));
       }
     } catch { setToast(t.dataError); }
@@ -491,12 +531,22 @@ export default function App() {
           <label className="select-control"><span>{t.sort}</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">{t.newest}</option><option value="name">{t.nameSort}</option><option value="location">{t.locationSort}</option></select></label>
         </div>
         {field === "tag" && <div className="tag-filter-panel"><div><strong>{t.tagLegend}</strong><small>{t.tagLegendCopy}</small></div><div className="tag-filter-list">{allTags.length ? allTags.map((tag) => <button key={tag.toLocaleLowerCase()} className={selectedTagKeys.has(tag.toLocaleLowerCase()) ? "active" : ""} aria-pressed={selectedTagKeys.has(tag.toLocaleLowerCase())} onClick={() => toggleTagFilter(tag)}><span>✓</span>{tag}</button>) : <em>{t.noTags}</em>}</div>{selectedTags.length > 0 && <button className="clear-tag-filter" onClick={() => { setQuery(""); setSelectedFilterTags([]); }}>{t.clearTags}</button>}</div>}
+        <div className="bulk-toolbar" role="group" aria-label={t.select}>
+          <button disabled={!hydrated || storageFailed || dataBusy || !results.length} aria-pressed={selecting} onClick={() => setSelecting(true)}>{t.select}</button>
+          <button disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => { setSelecting(true); setSelectedIds(results.map((item) => item.id)); }}>{t.selectAll}</button>
+          <button disabled={!selecting} onClick={() => { setSelecting(false); setSelectedIds([]); }}>{t.deselect}</button>
+          <button className="bulk-danger" disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setDeleteTarget(results)}>{t.deleteAll} ({results.length})</button>
+          {selecting && <><span>{t.selectedCount(selectedResults.length)}</span><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => setDeleteTarget(selectedResults)}>{t.deleteSelected}</button><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => { setBatchTag(""); setBatchTagOpen(true); }}>{t.batchTag}</button></>}
+          <button disabled={!deletedBatch || storageFailed || dataBusy} onClick={undoDelete}>{t.undoDelete}{deletedBatch ? ` (${deletedBatch.records.length})` : ""}</button>
+          <small>{t.scopeHint}{deletedBatch && ` ${t.undoHint}`}</small>
+        </div>
         {results.length > 0 ? (
           <div className="cards">{results.map((chemical) => (
-            <div className="card" key={chemical.id} role="button" tabIndex={0} aria-label={`${t.editRecord}: ${chemical.name}`} onClick={() => openEdit(chemical)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openEdit(chemical); } }}>
+            <div className={`card${selecting && selectedIds.includes(chemical.id) ? " card-selected" : ""}`} key={chemical.id} role="button" tabIndex={0} aria-label={`${selecting ? t.select : t.editRecord}: ${chemical.name}`} aria-pressed={selecting ? selectedIds.includes(chemical.id) : undefined} onClick={() => selecting ? toggleSelection(chemical.id) : openEdit(chemical)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); if (selecting) toggleSelection(chemical.id); else openEdit(chemical); } }}>
               <div className="structure-panel">
                 <ChemicalStructure chemical={chemical} alt={t.structureAlt(chemical.name)} unavailable={t.unavailable} onNotFound={markStructureNotFound} />
-                <button className="delete-button" onClick={(event) => { event.stopPropagation(); setDeleteTarget(chemical); }} aria-label={`${t.deleteEntry}: ${chemical.name}`} title={t.deleteEntry}>×</button><span className="record-id">#{chemical.id.slice(0, 4).toUpperCase()}</span>
+                {selecting && <input className="entry-checkbox" type="checkbox" aria-label={`${t.select}: ${chemical.name}`} checked={selectedIds.includes(chemical.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelection(chemical.id)} />}
+                <button disabled={storageFailed || dataBusy || !hydrated} className="delete-button" onClick={(event) => { event.stopPropagation(); setDeleteTarget([chemical]); }} aria-label={`${t.deleteEntry}: ${chemical.name}`} title={t.deleteEntry}>×</button><span className="record-id">#{chemical.id.slice(0, 4).toUpperCase()}</span>
               </div>
               <div className="card-body"><div className="tag-row"><div className="tag-list">{chemical.tags.length ? chemical.tags.map((tag) => <span className="tag" key={tag.toLocaleLowerCase()}>{tag}</span>) : <span className="tag tag-empty">{t.untagged}</span>}</div><span className="date">{t.added} {new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(chemical.createdAt))}</span></div><h3>{chemical.name}</h3><p className="formula">{chemical.formula}</p>{chemical.database?.molecularWeight && <p className="molecular-weight">MW {chemical.database.molecularWeight} g/mol <span>· {sourceLabel(chemical.database.molecularWeightSource ?? "pubchem")}</span></p>}
                 <dl><div><dt>{t.cas}</dt><dd>{chemical.cas}</dd></div><div><dt>{t.location}</dt><dd>{chemical.location}</dd></div></dl>
@@ -566,7 +616,8 @@ export default function App() {
           <section className="data-management" aria-labelledby="data-title"><p className="eyebrow">DATA &amp; BACKUP</p><h3 id="data-title">{t.dataTitle}</h3><p>{t.dataIntro}</p><div><button disabled={dataBusy} onClick={() => exportInventory("json")}>{t.exportJSON}</button><button disabled={dataBusy} onClick={() => exportInventory("csv")}>{t.exportCSV}</button><button className="primary-button" disabled={dataBusy} onClick={importInventory}>{t.importData}</button></div></section>
         </section>
       </div>}
-      {deleteTarget && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><span className="warning-icon">!</span><h2 id="delete-title">{t.deleteTitle(deleteTarget.name)}</h2><p>{t.deleteCopy}</p><div className="form-actions"><button onClick={() => setDeleteTarget(null)}>{t.cancel}</button><button className="danger-button" onClick={confirmDelete}>{t.confirmDelete}</button></div></section></div>}
+      {batchTagOpen && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="batch-tag-title"><h2 id="batch-tag-title">{t.batchTag}</h2><p>{t.selectedCount(selectedResults.length)}</p><form onSubmit={applyBatchTag}><label>{t.tagLabel}<input className="batch-tag-input" value={batchTag} onChange={(event) => setBatchTag(event.target.value)} placeholder={t.tagExample} list="batch-tag-suggestions" /></label><datalist id="batch-tag-suggestions">{allTags.map((tag) => <option key={tag} value={tag} />)}</datalist><div className="form-actions"><button type="button" onClick={() => setBatchTagOpen(false)}>{t.cancel}</button><button className="primary-button" disabled={storageFailed || dataBusy || !selectedResults.length || !batchTag.trim()} type="submit">{t.addTag}</button></div></form></section></div>}
+      {deleteTarget && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><span className="warning-icon">!</span><h2 id="delete-title">{deleteTarget.length === 1 ? t.deleteTitle(deleteTarget[0].name) : t.batchDeleteTitle(deleteTarget.length)}</h2><p>{t.deleteCopy}</p><div className="form-actions"><button onClick={() => setDeleteTarget(null)}>{t.cancel}</button><button className="danger-button" disabled={storageFailed || dataBusy || !hydrated} onClick={confirmDelete}>{t.confirmDelete}</button></div></section></div>}
       {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
     </main>
   );

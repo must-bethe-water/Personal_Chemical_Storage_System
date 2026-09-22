@@ -13,6 +13,8 @@ account or a PCSS-operated server.
 
 - English and Chinese interface
 - Search, field filters, tag filters, sorting, and duplicate-CAS review
+- Multi-select and batch deletion/tagging within the current search/filter results
+- Undo the latest deletion for 30 minutes during the current app session
 - Local SQLite inventory with transactional writes and rotating backups
 - JSON and CSV import/export with merge or replace workflows
 - Offline browsing, editing, deletion, filtering, and cached structure images
@@ -75,13 +77,20 @@ compiled only as an internal application resource.
 
 - SQLite database: `~/Library/Application Support/PCSS/inventory.sqlite3`
 - Cached structures: `~/Library/Application Support/PCSS/StructureCache/`
-- Last 20 inventory snapshots: `~/Library/Application Support/PCSS/Backups/`
+- Up to 20 inventory snapshots, retained for 30 days: `~/Library/Application Support/PCSS/Backups/`
 - Optional CompTox key: macOS Keychain
 
 The first launch transactionally migrates the earlier
 `pcss-chemicals-v1` WebKit local-storage format. The legacy value is removed
 only after SQLite confirms the write. Interface language remains in WebKit's
 local preference store.
+
+The selection toolbar applies to the current results only, including **Select
+all** and **Delete all**. Batch tags can be existing tags or newly typed labels.
+Deleting again replaces the undo batch; importing data or quitting clears it.
+Undo restores all fields of the deleted records without reverting other edits.
+Automatic backups and unused structure images expire after 30 days and are
+cleaned at startup and hourly while running. User-exported files are unaffected.
 
 Use **Database settings → Data & Backup** to export JSON or CSV and to import a
 file. JSON is the lossless backup format; CSV is intended for review and

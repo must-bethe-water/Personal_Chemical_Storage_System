@@ -35,6 +35,7 @@ static const NSInteger PCSSSchemaVersion = 1;
     }
     sqlite3_busy_timeout(_database, 5000);
     if (![self execute:@"PRAGMA journal_mode=WAL" error:error] ||
+        ![self execute:@"PRAGMA secure_delete=ON" error:error] ||
         ![self execute:@"PRAGMA synchronous=FULL" error:error] ||
         ![self execute:@"CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)" error:error] ||
         ![self execute:@"CREATE TABLE IF NOT EXISTS chemicals (id TEXT PRIMARY KEY, name TEXT NOT NULL, formula TEXT NOT NULL, cas TEXT NOT NULL, location TEXT NOT NULL, amount TEXT NOT NULL, tags_json TEXT NOT NULL, created_at TEXT NOT NULL, structure_url TEXT NOT NULL, structure_status TEXT, database_json TEXT)" error:error] ||
@@ -42,6 +43,7 @@ static const NSInteger PCSSSchemaVersion = 1;
         ![self execute:@"CREATE INDEX IF NOT EXISTS chemicals_created_idx ON chemicals(created_at DESC)" error:error]) return nil;
     NSString *versionSQL = [NSString stringWithFormat:@"INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','%ld')", (long)PCSSSchemaVersion];
     if (![self execute:versionSQL error:error]) return nil;
+    [self purgeExpiredFiles];
     return self;
 }
 
@@ -153,6 +155,8 @@ invalid:
         [ids addObject:chemical[@"id"]];
     }
     @synchronized (self) {
+        NSArray *previous = [self allChemicals:error];
+        if (!previous) return NO;
         if (createBackup && ![self createBackup:error]) return NO;
         if (![self execute:@"BEGIN IMMEDIATE TRANSACTION" error:error]) return NO;
         BOOL success = [self execute:@"DELETE FROM chemicals" error:error];
@@ -185,7 +189,37 @@ invalid:
             success = [self execute:@"COMMIT" error:error];
             if (!success) [self execute:@"ROLLBACK" error:nil];
         } else [self execute:@"ROLLBACK" error:nil];
+        if (success) {
+            // Start the cache retention window at deletion, so undo also works offline.
+            for (NSDictionary *chemical in previous) {
+                if (![ids containsObject:chemical[@"id"]]) {
+                    [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: NSDate.date}
+                        ofItemAtPath:[self structureURLForCAS:chemical[@"cas"]].path error:nil];
+                }
+            }
+            sqlite3_wal_checkpoint_v2(self.database, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
+        }
         return success;
+    }
+}
+
+// Run at startup and hourly; a closed app cleans up on its next launch.
+- (void)purgeExpiredFiles {
+    @synchronized (self) {
+        NSArray *chemicals = [self allChemicals:nil];
+        if (!chemicals) return;
+        NSMutableSet *activeImages = [NSMutableSet set];
+        for (NSDictionary *chemical in chemicals) [activeImages addObject:[self structureURLForCAS:chemical[@"cas"]].lastPathComponent];
+        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-(30 * 24 * 60 * 60)];
+        for (NSURL *directory in @[self.backupsURL, self.structureCacheURL]) {
+            NSArray<NSURL *> *files = [NSFileManager.defaultManager contentsOfDirectoryAtURL:directory includingPropertiesForKeys:@[NSURLContentModificationDateKey] options:0 error:nil];
+            for (NSURL *file in files) {
+                if ([directory isEqual:self.structureCacheURL] && [activeImages containsObject:file.lastPathComponent]) continue;
+                NSDate *modified = nil;
+                [file getResourceValue:&modified forKey:NSURLContentModificationDateKey error:nil];
+                if (modified && [modified compare:cutoff] != NSOrderedDescending) [NSFileManager.defaultManager removeItemAtURL:file error:nil];
+            }
+        }
     }
 }
 

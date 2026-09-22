@@ -61,6 +61,23 @@ int main(void) {
         PCSSStore *reopened = [[PCSSStore alloc] initWithRootURL:root error:&error];
         Require(reopened.isInventoryInitialized && [reopened allChemicals:&error].count == 0, @"Empty inventory did not survive database reopen");
 
+        NSURL *oldBackup = backups.firstObject;
+        NSDate *expired = [NSDate dateWithTimeIntervalSinceNow:-(31 * 24 * 60 * 60)];
+        [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: expired} ofItemAtPath:oldBackup.path error:&error];
+        NSURL *cachedImage = [store.structureCacheURL URLByAppendingPathComponent:@"65-85-0.png"];
+        [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: expired} ofItemAtPath:cachedImage.path error:&error];
+        Require([store replaceChemicals:@[chemical] createBackup:NO error:&error], @"Restore fixture failed");
+        [store purgeExpiredFiles];
+        Require(![NSFileManager.defaultManager fileExistsAtPath:oldBackup.path], @"Expired backup was retained");
+        Require([store cachedStructureForCAS:@"65-85-0"] != nil, @"Active structure cache was removed");
+        Require([store replaceChemicals:@[] createBackup:NO error:&error], @"Delete fixture failed");
+        [store purgeExpiredFiles];
+        Require([store cachedStructureForCAS:@"65-85-0"] != nil, @"Recently deleted structure must remain available for offline undo");
+        [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: expired} ofItemAtPath:cachedImage.path error:&error];
+        [store purgeExpiredFiles];
+        Require([store cachedStructureForCAS:@"65-85-0"] == nil, @"Expired orphan structure was retained");
+        Require([NSFileManager.defaultManager contentsOfDirectoryAtURL:[root URLByAppendingPathComponent:@"Backups"] includingPropertiesForKeys:nil options:0 error:&error].count > 0, @"Recent backups were removed");
+
         [NSFileManager.defaultManager removeItemAtURL:root error:nil];
         NSLog(@"PCSSStore tests passed");
     }
