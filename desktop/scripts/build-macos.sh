@@ -87,10 +87,7 @@ if [[ "$sign_identity" != "-" ]]; then
 fi
 codesign "${codesign_args[@]}" "$app_root" >/dev/null
 codesign --verify --deep --strict "$app_root"
-mkdir -p "$outputs_dir"
-rm -rf "$output_app"
-ditto --noextattr --noqtn "$app_root" "$output_app"
-codesign --verify --deep --strict "$output_app"
+bash "$project_root/desktop/scripts/update-app-bundle.sh" "$app_root" "$output_app"
 cleanup_numbered_copies
 
 echo "$output_app"

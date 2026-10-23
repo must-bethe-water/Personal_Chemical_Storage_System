@@ -70,6 +70,11 @@ npm run release:verify
 ```
 
 The ad-hoc-signed Universal development app is written to `outputs/PCSS.app`.
+Rebuilds preserve the application directory so a Dock shortcut to
+`outputs/PCSS.app` keeps pointing to the latest build. Quit and reopen PCSS after
+a rebuild to load the updated code. A separate copy in `/Applications` is not
+updated by this development build.
+
 There is no standalone browser target or development server; the React UI is
 compiled only as an internal application resource.
 

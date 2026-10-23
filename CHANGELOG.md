@@ -5,6 +5,9 @@ Versioning.
 
 ## Unreleased
 
+- Preserve the app bundle directory during rebuilds so Dock bookmarks remain valid;
+  stage and verify updated contents before replacement, with rollback on failure.
+
 - Consolidate display, database access, and data/backup settings in the header gear.
 
 - Show Select all only while selection mode is active.
