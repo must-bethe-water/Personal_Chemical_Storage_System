@@ -126,9 +126,10 @@ static const NSInteger PCSSSchemaVersion = 1;
 - (BOOL)validateChemical:(id)value error:(NSError **)error {
     NSDictionary *chemical = [value isKindOfClass:NSDictionary.class] ? value : nil;
     if (!chemical) goto invalid;
-    for (NSString *key in @[@"id", @"name", @"formula", @"cas", @"location", @"createdAt", @"structureUrl"]) {
+    for (NSString *key in @[@"id", @"name", @"cas", @"location", @"createdAt", @"structureUrl"]) {
         if (![chemical[key] isKindOfClass:NSString.class] || ![chemical[key] length]) goto invalid;
     }
+    if (![chemical[@"formula"] isKindOfClass:NSString.class]) goto invalid;
     if (chemical[@"amount"] && ![chemical[@"amount"] isKindOfClass:NSString.class]) goto invalid;
     if (![chemical[@"tags"] isKindOfClass:NSArray.class]) goto invalid;
     for (id tag in chemical[@"tags"]) if (![tag isKindOfClass:NSString.class]) goto invalid;

@@ -56,3 +56,12 @@ export const paginate = <T>(records: T[], requestedPage: number, requestedSize: 
   const start = (page - 1) * size;
   return { page, pages, start: records.length ? start + 1 : 0, end: Math.min(start + size, records.length), items: records.slice(start, start + size) };
 };
+
+export const needsIdentity = (record: { cas: string; name: string; formula: string }) =>
+  record.name.trim() === record.cas.trim() || !record.name.trim() || !record.formula.trim();
+export const fillMissingIdentity = <T extends { cas: string; name: string; formula: string; database?: unknown }>(record: T, result: { name: string; formula: string }): T => ({
+  ...record,
+  name: !record.name.trim() || record.name.trim() === record.cas.trim() ? result.name || record.name : record.name,
+  formula: record.formula.trim() || result.formula,
+  database: result,
+});

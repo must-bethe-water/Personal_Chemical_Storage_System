@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, DELETE_UNDO_MS, selectedInScope, addTagToRecords, restoreDeleted, DEFAULT_PAGE_SIZE, validPageSize, paginate } from "./model";
+import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, DELETE_UNDO_MS, selectedInScope, addTagToRecords, restoreDeleted, DEFAULT_PAGE_SIZE, validPageSize, paginate, needsIdentity, fillMissingIdentity } from "./model";
 
 type SourceId = "pubchem" | "chebi" | "chembl" | "comptox" | "unichem";
 type SourceResult = { id: SourceId; status: "matched" | "not-found" | "unavailable" | "key-required"; identifier?: string; url?: string };
@@ -59,9 +59,10 @@ const COPY = {
     unavailable: "Structure unavailable", deleteEntry: "Delete record", added: "Added", currentStock: "Current stock",
     noMatch: "No matching chemicals", noMatchCopy: "Try another keyword or search field.", clearFilters: "Clear filters", noInventory: "Your inventory is empty", noInventoryCopy: "Add your first chemical to begin a local inventory.", addFirst: "Add first chemical",
     safety: "Inventory use only · Follow laboratory safety procedures when handling chemicals",
-    newRecord: "NEW RECORD", addTitle: "Add a chemical", addIntro: "Enter either an English compound name or a CAS number. The other identity fields will be resolved and filled automatically.",
-    chemicalName: "English compound name *", chemicalNameExample: "e.g. Benzoic acid", formulaLabel: "Molecular formula *", formulaExample: "e.g. C7H6O2", casLabel: "CAS number *", casExample: "e.g. 65-85-0", casHelp: "Enter a valid format, e.g. 65-85-0",
-    amountLabel: "Quantity", amountExample: "e.g. 250 g", locationLabel: "Storage location *", locationExample: "e.g. Organic cabinet · A2", tagLabel: "Custom tags", tagExample: "e.g. Organic acid", addTag: "Add tag", removeTag: (tag: string) => `Remove ${tag}`, frequentSuggestions: "Frequently used",
+    newRecord: "NEW RECORD", addTitle: "Add a chemical", addIntro: "Start with a valid CAS number. Name and formula can be completed automatically.",
+    chemicalName: "English compound name", chemicalNameExample: "e.g. Benzoic acid", formulaLabel: "Molecular formula", formulaExample: "e.g. C7H6O2", casLabel: "CAS number *", casExample: "e.g. 65-85-0", casHelp: "Enter a valid format, e.g. 65-85-0",
+    offlineHint: "Only CAS, quantity and storage location are required. Missing identity is filled when sources become available.",
+    amountLabel: "Quantity *", amountExample: "e.g. 250 g", locationLabel: "Storage location *", locationExample: "e.g. Organic cabinet · A2", tagLabel: "Custom tags", tagExample: "e.g. Organic acid", addTag: "Add tag", removeTag: (tag: string) => `Remove ${tag}`, frequentSuggestions: "Frequently used",
     structureLink: "Structure image URL", optional: "Optional", structureExample: "Leave blank to retrieve from PubChem using the CAS number", cancel: "Cancel", save: "Save to inventory →", close: "Close",
     lookupHint: "Enter an English name or valid CAS number to auto-fill the matching identity.", lookupLoading: "Resolving compound identity…", lookupSuccess: (count: number, cid?: number, cas?: string) => `${count} sources matched${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "No matching compound with a confirmed CAS number was found.", lookupError: "Sources are temporarily unavailable. You can enter the details manually.",
     untagged: "Untagged", notSpecified: "Not specified",
@@ -83,9 +84,10 @@ const COPY = {
     unavailable: "结构图暂不可用", deleteEntry: "删除词条", added: "入库", currentStock: "当前库存",
     noMatch: "没有匹配的试剂", noMatchCopy: "换个关键词或检索范围试试看。", clearFilters: "清除筛选", noInventory: "库存还是空的", noInventoryCopy: "添加第一个化学试剂，开始建立本地库存。", addFirst: "添加第一个试剂",
     safety: "仅供库存管理 · 化学品处理请遵守实验室安全规范",
-    newRecord: "新建词条", addTitle: "添加化学试剂", addIntro: "输入化合物英文名称或 CAS 号中的任意一项，系统会反向确认并自动补全其他身份信息。",
-    chemicalName: "化合物英文名称 *", chemicalNameExample: "例如：Benzoic acid", formulaLabel: "化学式 *", formulaExample: "例如：C7H6O2", casLabel: "CAS 号 *", casExample: "例如：65-85-0", casHelp: "请输入有效格式，例如 65-85-0",
-    amountLabel: "存储量", amountExample: "例如：250 g", locationLabel: "存储地点 *", locationExample: "例如：有机试剂柜 · A2", tagLabel: "自定义标签", tagExample: "例如：有机酸", addTag: "添加标签", removeTag: (tag: string) => `删除标签 ${tag}`, frequentSuggestions: "常用快捷填充",
+    newRecord: "新建词条", addTitle: "添加化学试剂", addIntro: "先输入有效的 CAS 号；名称和化学式可以自动补全。",
+    chemicalName: "化合物英文名称", chemicalNameExample: "例如：Benzoic acid", formulaLabel: "化学式", formulaExample: "例如：C7H6O2", casLabel: "CAS 号 *", casExample: "例如：65-85-0", casHelp: "请输入有效格式，例如 65-85-0",
+    offlineHint: "只需填写 CAS、存储量和存储地点；数据库恢复后会补全缺失信息。",
+    amountLabel: "存储量 *", amountExample: "例如：250 g", locationLabel: "存储地点 *", locationExample: "例如：有机试剂柜 · A2", tagLabel: "自定义标签", tagExample: "例如：有机酸", addTag: "添加标签", removeTag: (tag: string) => `删除标签 ${tag}`, frequentSuggestions: "常用快捷填充",
     structureLink: "结构图片链接", optional: "可选", structureExample: "留空则通过 CAS 号从 PubChem 获取", cancel: "取消", save: "保存并入库 →", close: "关闭",
     lookupHint: "输入英文名称或有效 CAS 号后，将自动补全对应身份信息。", lookupLoading: "正在解析化合物身份…", lookupSuccess: (count: number, cid?: number, cas?: string) => `已匹配 ${count} 个来源${cid ? ` · CID ${cid}` : ""}${cas ? ` · CAS ${cas}` : ""}`, lookupNotFound: "未找到具有可确认 CAS 号的对应化合物。", lookupError: "数据库暂时不可用，你仍可手动填写。",
     untagged: "未加标签", notSpecified: "未填写",
@@ -214,7 +216,9 @@ export default function App() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
   const [toast, setToast] = useState("");
-  const nameInputRef = useRef<HTMLInputElement>(null);
+  const casInputRef = useRef<HTMLInputElement>(null);
+  const chemicalsRef = useRef(chemicals);
+  useEffect(() => { chemicalsRef.current = chemicals; }, [chemicals]);
   const lastResolvedRef = useRef("");
   const lastPersistedRef = useRef("");
   const persistChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -299,7 +303,7 @@ export default function App() {
     const name = form.name.trim();
     const lookupByCas = isValidCas(cas);
     const lookupByName = !lookupByCas && name.length >= 2;
-    if (!lookupByCas && !lookupByName) return;
+    if ((!lookupByCas && !lookupByName) || !navigator.onLine) return;
     const lookupKey = lookupByCas ? `cas:${cas}` : `name:${name.toLocaleLowerCase()}`;
     if (lastResolvedRef.current === lookupKey) return;
     const controller = new AbortController();
@@ -314,7 +318,7 @@ export default function App() {
         lastResolvedRef.current = `cas:${compound.cas}`;
         setForm((current) => {
           const unchanged = lookupByCas ? current.cas.trim() === cas : !isValidCas(current.cas.trim()) && current.name.trim() === name;
-          return unchanged ? { ...current, name: compound.name, formula: compound.formula, cas: compound.cas } : current;
+          return unchanged ? { ...current, name: current.name.trim() && current.name.trim() !== current.cas.trim() ? current.name : compound.name, formula: current.formula.trim() || compound.formula, cas: compound.cas } : current;
         });
         setLookup({ status: "success", result: compound });
       } catch (error) {
@@ -323,7 +327,36 @@ export default function App() {
     }, 650);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [form.cas, form.name]);
-  useEffect(() => { if (modalOpen) nameInputRef.current?.focus(); }, [modalOpen]);
+  useEffect(() => { if (modalOpen) casInputRef.current?.focus(); }, [modalOpen]);
+  useEffect(() => {
+    if (!hydrated || storageFailed) return;
+    let stopped = false;
+    let busy = false;
+    const lastAttempt = new Map<string, number>();
+    const check = async () => {
+      if (stopped || busy || !navigator.onLine || document.visibilityState === "hidden") return;
+      const now = Date.now();
+      const candidate = chemicalsRef.current.find((item) => needsIdentity(item) && isValidCas(item.cas.trim()) && now >= (lastAttempt.get(item.cas) ?? 0));
+      if (!candidate) return;
+      busy = true;
+      lastAttempt.set(candidate.cas, now + 60 * 60 * 1000);
+      try {
+        const response = await fetch(`/api/chemistry?cas=${encodeURIComponent(candidate.cas)}`);
+        if (response.status === 404) { lastAttempt.set(candidate.cas, now + 24 * 60 * 60 * 1000); return; }
+        if (!response.ok) return;
+        const result = await response.json() as LookupResult;
+        if (!stopped && result.cas === candidate.cas) setChemicals((current) => current.map((item) => item.cas === candidate.cas && needsIdentity(item) ? fillMissingIdentity(item, result) : item));
+      } catch { /* The next bounded check handles temporary unavailability. */ }
+      finally { busy = false; }
+    };
+    const timer = window.setInterval(() => { void check(); }, 15 * 60 * 1000);
+    const onOnline = () => { void check(); };
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onOnline);
+    void check();
+    return () => { stopped = true; window.clearInterval(timer); window.removeEventListener("online", onOnline); window.removeEventListener("focus", onOnline); };
+  }, [hydrated, storageFailed]);
+
 
   const allTags = useMemo(() => {
     const labels = new Map<string, string>();
@@ -385,7 +418,8 @@ export default function App() {
   }
   function submitChemical(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const chemical: Chemical = { ...form, tags: uniqueTags([...form.tags, tagInput]), id: crypto.randomUUID(), createdAt: new Date().toISOString(), structureUrl: form.structureUrl.trim() || pubChemImage(form.cas.trim()), ...(lookup.result ? { database: lookup.result } : {}) };
+    if (!isValidCas(form.cas.trim()) || !form.amount.trim() || !form.location.trim()) return;
+    const chemical: Chemical = { ...form, name: form.name.trim() || form.cas.trim(), formula: form.formula.trim(), amount: form.amount.trim(), location: form.location.trim(), tags: uniqueTags([...form.tags, tagInput]), id: crypto.randomUUID(), createdAt: new Date().toISOString(), structureUrl: form.structureUrl.trim() || pubChemImage(form.cas.trim()), ...(lookup.result ? { database: lookup.result } : {}) };
     const matches = chemicals.filter((item) => item.cas.trim() === chemical.cas.trim());
     if (matches.length) { setPendingDuplicate({ chemical, matches }); return; }
     addChemical(chemical);
@@ -555,9 +589,8 @@ export default function App() {
         </div>
         {field === "tag" && <div className="tag-filter-panel"><div><strong>{t.tagLegend}</strong><small>{t.tagLegendCopy}</small></div><div className="tag-filter-list">{allTags.length ? allTags.map((tag) => <button key={tag.toLocaleLowerCase()} className={selectedTagKeys.has(tag.toLocaleLowerCase()) ? "active" : ""} aria-pressed={selectedTagKeys.has(tag.toLocaleLowerCase())} onClick={() => toggleTagFilter(tag)}><span>✓</span>{tag}</button>) : <em>{t.noTags}</em>}</div>{selectedTags.length > 0 && <button className="clear-tag-filter" onClick={() => { setQuery(""); setSelectedFilterTags([]); }}>{t.clearTags}</button>}</div>}
         <div className="bulk-toolbar" role="group" aria-label={t.select}>
-          <button disabled={!hydrated || storageFailed || dataBusy || !results.length} aria-pressed={selecting} onClick={() => setSelecting(true)}>{t.select}</button>
+          <button disabled={!selecting && (!hydrated || storageFailed || dataBusy || !results.length)} aria-pressed={selecting} onClick={() => { if (selecting) { setSelecting(false); setSelectedIds([]); } else setSelecting(true); }}>{selecting ? t.deselect : t.select}</button>
           {selecting && <button disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setSelectedIds(results.map((item) => item.id))}>{t.selectAll}</button>}
-          <button disabled={!selecting} onClick={() => { setSelecting(false); setSelectedIds([]); }}>{t.deselect}</button>
           <button className="bulk-danger" disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setDeleteTarget(results)}>{t.deleteAll} ({results.length})</button>
           {selecting && <><span>{t.selectedCount(selectedResults.length)}</span><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => setDeleteTarget(selectedResults)}>{t.deleteSelected}</button><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => { setBatchTag(""); setBatchTagOpen(true); }}>{t.batchTag}</button></>}
           <button disabled={!deletedBatch || storageFailed || dataBusy} onClick={undoDelete}>{t.undoDelete}{deletedBatch ? ` (${deletedBatch.records.length})` : ""}</button>
@@ -593,14 +626,14 @@ export default function App() {
       </section>
       <footer><span>PCSS / PERSONAL CHEMICAL STORAGE SYSTEM</span><span>{t.safety}</span></footer>
       {modalOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalOpen(false); }}>
-        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-title"><button className="modal-close" onClick={() => setModalOpen(false)} aria-label={t.close}>×</button><p className="eyebrow">{t.newRecord}</p><h2 id="add-title">{t.addTitle}</h2><p className="modal-intro">{t.addIntro}</p>
+        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-title"><button className="modal-close" onClick={() => setModalOpen(false)} aria-label={t.close}>×</button><p className="eyebrow">{t.newRecord}</p><h2 id="add-title">{t.addTitle}</h2><p className="modal-intro">{t.addIntro} {t.offlineHint}</p>
           <form onSubmit={submitChemical}><div className="form-grid">
-            <label><span>{t.chemicalName}</span><input ref={nameInputRef} required value={form.name} onChange={(event) => { const resolvedIdentity = lookup.result?.cas === form.cas; lastResolvedRef.current = ""; setLookup({ status: "idle" }); setForm({ ...form, name: event.target.value, ...(resolvedIdentity ? { cas: "", formula: "" } : {}) }); }} placeholder={t.chemicalNameExample} autoComplete="off" /></label>
-            <label><span>{t.formulaLabel}</span><input required value={form.formula} onChange={(event) => setForm({ ...form, formula: event.target.value })} placeholder={t.formulaExample} /></label>
-            <label className="cas-field"><span>{t.casLabel}</span><input required value={form.cas} onChange={(event) => { const resolvedIdentity = lookup.result?.name === form.name; lastResolvedRef.current = ""; setLookup({ status: "idle" }); setForm({ ...form, cas: event.target.value, ...(resolvedIdentity ? { name: "", formula: "" } : {}) }); }} placeholder={t.casExample} pattern="[0-9]{2,7}-[0-9]{2}-[0-9]" title={t.casHelp} /><small className={`lookup-status ${lookup.status}`}>{lookup.status === "loading" ? t.lookupLoading : lookup.status === "success" ? t.lookupSuccess(lookup.result?.sources.filter((item) => item.status === "matched").length ?? 0, lookup.result?.cid, lookup.result?.cas) : lookup.status === "not-found" ? t.lookupNotFound : lookup.status === "error" ? t.lookupError : t.lookupHint}</small>
+            <label className="cas-field"><span>{t.casLabel}</span><input ref={casInputRef} required value={form.cas} onChange={(event) => { const resolvedIdentity = lookup.result?.name === form.name; lastResolvedRef.current = ""; setLookup({ status: "idle" }); setForm({ ...form, cas: event.target.value, ...(resolvedIdentity ? { name: "", formula: "" } : {}) }); }} placeholder={t.casExample} pattern="[0-9]{2,7}-[0-9]{2}-[0-9]" title={t.casHelp} /><small className={`lookup-status ${lookup.status}`}>{lookup.status === "loading" ? t.lookupLoading : lookup.status === "success" ? t.lookupSuccess(lookup.result?.sources.filter((item) => item.status === "matched").length ?? 0, lookup.result?.cid, lookup.result?.cas) : lookup.status === "not-found" ? t.lookupNotFound : lookup.status === "error" ? t.lookupError : t.lookupHint}</small>
               {lookup.result && <span className="lookup-badges">{lookup.result.sources.map((item) => <i key={item.id} className={item.status}>{sourceLabel(item.id)}{item.identifier ? ` · ${item.identifier}` : ""}</i>)}</span>}
             </label>
-            <div className="form-field suggestion-field"><label><span>{t.amountLabel} <i>{t.optional}</i></span><input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder={t.amountExample} /></label><QuickSuggestions values={amountSuggestions} label={t.frequentSuggestions} onSelect={(amount) => setForm({ ...form, amount })} /></div>
+            <label><span>{t.chemicalName}</span><input value={form.name} onChange={(event) => { lastResolvedRef.current = ""; setLookup({ status: "idle" }); setForm({ ...form, name: event.target.value }); }} placeholder={t.chemicalNameExample} autoComplete="off" /></label>
+            <label><span>{t.formulaLabel}</span><input value={form.formula} onChange={(event) => setForm({ ...form, formula: event.target.value })} placeholder={t.formulaExample} /></label>
+            <div className="form-field suggestion-field"><label><span>{t.amountLabel}</span><input required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder={t.amountExample} /></label><QuickSuggestions values={amountSuggestions} label={t.frequentSuggestions} onSelect={(amount) => setForm({ ...form, amount })} /></div>
             <div className="form-field suggestion-field"><label><span>{t.locationLabel}</span><input required value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder={t.locationExample} /></label><QuickSuggestions values={locationSuggestions} label={t.frequentSuggestions} onSelect={(location) => setForm({ ...form, location })} /></div>
             <div className="form-field full-field"><span className="field-label">{t.tagLabel} <i>{t.optional}</i></span><TagEditor tags={form.tags} value={tagInput} suggestions={tagSuggestions.filter((tag) => !form.tags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase()))} label={t.tagLabel} placeholder={t.tagExample} addLabel={t.addTag} suggestionLabel={t.frequentSuggestions} removeLabel={t.removeTag} onChange={setTagInput} onAdd={addFormTag} onRemove={(tag) => setForm({ ...form, tags: form.tags.filter((item) => item.toLocaleLowerCase() !== tag.toLocaleLowerCase()) })} /></div>
             <label className="full-field"><span>{t.structureLink} <i>{t.optional}</i></span><input type="url" value={form.structureUrl} onChange={(event) => setForm({ ...form, structureUrl: event.target.value })} placeholder={t.structureExample} /></label>

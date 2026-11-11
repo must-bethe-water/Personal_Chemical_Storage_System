@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, selectedInScope, addTagToRecords, restoreDeleted, DELETE_UNDO_MS, paginate, validPageSize } from "../desktop/ui/model.ts";
+import { isValidCas, migrateStoredTags, parseTagQuery, uniqueTags, selectedInScope, addTagToRecords, restoreDeleted, DELETE_UNDO_MS, paginate, validPageSize, needsIdentity, fillMissingIdentity } from "../desktop/ui/model.ts";
 
 test("CAS validation checks format and checksum", () => {
   assert.equal(isValidCas("65-85-0"), true);
@@ -62,4 +62,14 @@ test("selection remains independent of the displayed page", () => {
   const selected = selectedInScope(records, ["a", "c"]);
   assert.equal(paginate(records, 2, 2).items.length, 1);
   assert.deepEqual(selected.map((record) => record.id), ["a", "c"]);
+});
+
+test("offline identity recovery fills only missing fields and retains inventory details", () => {
+  const offline = { id: "offline", cas: "65-85-0", name: "65-85-0", formula: "", amount: "250 g", location: "A2", tags: ["Acid"] };
+  assert.equal(needsIdentity(offline), true);
+  const result = fillMissingIdentity(offline, { name: "Benzoic acid", formula: "C7H6O2" });
+  assert.equal(needsIdentity(result), false);
+  assert.deepEqual(result, { ...offline, name: "Benzoic acid", formula: "C7H6O2", database: { name: "Benzoic acid", formula: "C7H6O2" } });
+  const named = { ...offline, name: "My reagent" };
+  assert.equal(fillMissingIdentity(named, { name: "Other name", formula: "C7H6O2" }).name, "My reagent");
 });

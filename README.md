@@ -18,6 +18,8 @@ account or a PCSS-operated server.
 - Local SQLite inventory with transactional writes and rotating backups
 - JSON and CSV import/export with merge or replace workflows
 - Offline browsing, editing, deletion, filtering, and cached structure images
+- Offline entry using CAS, quantity, and storage location; missing identity is
+  completed with paced checks when online
 - On-demand PubChem properties and structures
 - UniChem mapping to ChEBI and ChEMBL
 - Optional EPA CompTox lookup with the user's API key stored in macOS Keychain

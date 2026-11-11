@@ -163,3 +163,8 @@ footer { display:flex; justify-content:space-between; gap:20px; padding:27px cla
 .settings-section h3 { margin:0 0 16px; font-size:17px; color:var(--green); }
 .settings-section h4 { margin:0 0 8px; font-size:13px; }
 .settings-section .modal-intro { font-size:12px; }
+
+/* CAS leads the add form and stays visually prominent. */
+.form-grid .cas-field { grid-column:1/-1; padding:16px; background:#e9f2eb; border:1px solid #cfdfd2; border-radius:10px; }
+.form-grid .cas-field input { height:54px; font-size:18px; font-weight:650; letter-spacing:.02em; }
+.form-grid .cas-field>span { color:var(--green); font-size:13px; }

@@ -5,6 +5,10 @@ Versioning.
 
 ## Unreleased
 
+- Lead chemical entry with CAS, require quantity, allow offline entry with
+  missing identity, and fill incomplete identities with paced online checks.
+- Toggle Select and Cancel selection in the same control.
+
 - Preserve the app bundle directory during rebuilds so Dock bookmarks remain valid;
   stage and verify updated contents before replacement, with rollback on failure.
 

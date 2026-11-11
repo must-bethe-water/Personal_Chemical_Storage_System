@@ -26,6 +26,14 @@ int main(void) {
         NSArray *loaded = [store allChemicals:&error];
         Require(loaded.count == 1 && [loaded.firstObject[@"database"] isKindOfClass:NSDictionary.class], @"SQLite round trip lost data");
 
+        NSMutableDictionary *offline = [chemical mutableCopy];
+        offline[@"id"] = @"offline";
+        offline[@"name"] = offline[@"cas"];
+        offline[@"formula"] = @"";
+        Require([store replaceChemicals:@[chemical, offline] createBackup:NO error:&error], @"Offline inventory record was rejected");
+        Require([store allChemicals:&error].count == 2, @"Offline inventory record was not persisted");
+        Require([store replaceChemicals:@[chemical] createBackup:NO error:&error], @"Test inventory restore failed");
+
         for (NSString *format in @[@"json", @"csv"]) {
             NSData *exported = [store exportDataForFormat:format error:&error];
             Require(exported.length > 0, [NSString stringWithFormat:@"%@ export failed", format]);
