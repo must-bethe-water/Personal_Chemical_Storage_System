@@ -11,6 +11,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithRootURL:(NSURL *)rootURL error:(NSError **)error;
 - (nullable NSArray<NSDictionary *> *)allChemicals:(NSError **)error;
 - (BOOL)isInventoryInitialized;
+- (nullable NSArray<NSDictionary *> *)trashedChemicals:(NSError **)error;
+- (BOOL)moveToTrashIDs:(NSArray<NSString *> *)ids error:(NSError **)error;
+- (BOOL)restoreTrashIDs:(NSArray<NSString *> *)ids error:(NSError **)error;
+- (NSInteger)trashRetentionDays;
+- (BOOL)setTrashRetentionDays:(NSInteger)days error:(NSError **)error;
 - (void)purgeExpiredFiles;
 - (BOOL)replaceChemicals:(NSArray *)chemicals createBackup:(BOOL)createBackup error:(NSError **)error;
 - (nullable NSData *)exportDataForFormat:(NSString *)format error:(NSError **)error;

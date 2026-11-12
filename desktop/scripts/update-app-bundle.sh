@@ -34,6 +34,9 @@ trap 'exit 143' TERM
 # Stage the copy on the target volume before touching the existing bundle.
 ditto --noextattr --noqtn "$source_app" "$update_dir/Next.app"
 xattr -cr "$update_dir/Next.app"
+xattr -d com.apple.FinderInfo "$update_dir/Next.app" 2>/dev/null || true
+xattr -d com.apple.ResourceFork "$update_dir/Next.app" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$update_dir/Next.app" 2>/dev/null || true
 codesign --verify --deep --strict "$update_dir/Next.app"
 mkdir -p "$target_app"
 if [[ -d "$target_app/Contents" ]]; then

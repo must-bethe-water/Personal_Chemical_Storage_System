@@ -14,7 +14,7 @@ account or a PCSS-operated server.
 - English and Chinese interface
 - Search, field filters, tag filters, sorting, and duplicate-CAS review
 - Multi-select and batch deletion/tagging within the current search/filter results
-- Undo the latest deletion for 30 minutes during the current app session
+- Restore deleted records from a searchable Trash with 1–14 day retention
 - Local SQLite inventory with transactional writes and rotating backups
 - JSON and CSV import/export with merge or replace workflows
 - Offline browsing, editing, deletion, filtering, and cached structure images
@@ -100,8 +100,9 @@ appears after clicking **Select** and includes every page of the current results
 
 The selection toolbar applies to the current results only, including **Select
 all** and **Delete all**. Batch tags can be existing tags or newly typed labels.
-Deleting again replaces the undo batch; importing data or quitting clears it.
-Undo restores all fields of the deleted records without reverting other edits.
+Deleted records appear in Trash, where the same search, filters, pagination,
+and selection controls remain available. Restore one entry or a selection before
+the chosen 1–14 day retention period expires. Existing deletions are not migrated.
 Automatic backups and unused structure images expire after 30 days and are
 cleaned at startup and hourly while running. User-exported files are unaffected.
 

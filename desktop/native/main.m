@@ -53,6 +53,8 @@ static NSString *const PCSSLegacyCompToxKeychainService = @"com.pcss.inventory.c
         [self lookupStructure:url task:schemeTask];
     } else if ([url.path isEqualToString:@"/api/inventory"]) {
         [self handleInventory:schemeTask];
+    } else if ([url.path isEqualToString:@"/api/trash"]) {
+        [self handleTrash:schemeTask];
     } else if ([url.path isEqualToString:@"/api/inventory/export"]) {
         [self handleInventoryExport:schemeTask];
     } else if ([url.path isEqualToString:@"/api/inventory/import"]) {
@@ -130,6 +132,22 @@ static NSString *const PCSSLegacyCompToxKeychainService = @"com.pcss.inventory.c
         return;
     }
     [self json:schemeTask url:schemeTask.request.URL status:405 value:@{ @"error": @"method_not_allowed" }];
+}
+
+- (void)handleTrash:(id<WKURLSchemeTask>)schemeTask {
+    NSString *method = schemeTask.request.HTTPMethod.uppercaseString ?: @"GET";
+    NSError *error = nil;
+    if ([method isEqualToString:@"GET"]) {
+        NSArray *records = [self.store trashedChemicals:&error];
+        [self json:schemeTask url:schemeTask.request.URL status:records ? 200 : 500 value:records ? @{ @"records": records, @"retentionDays": @(self.store.trashRetentionDays) } : @{ @"error": error.localizedDescription ?: @"trash_read_failed" }];
+        return;
+    }
+    NSDictionary *body = [NSJSONSerialization JSONObjectWithData:schemeTask.request.HTTPBody ?: NSData.data options:0 error:nil];
+    BOOL success = NO;
+    if ([method isEqualToString:@"POST"] && [body[@"ids"] isKindOfClass:NSArray.class]) success = [self.store moveToTrashIDs:body[@"ids"] error:&error];
+    else if ([method isEqualToString:@"PATCH"] && [body[@"ids"] isKindOfClass:NSArray.class]) success = [self.store restoreTrashIDs:body[@"ids"] error:&error];
+    else if ([method isEqualToString:@"PUT"] && [body[@"retentionDays"] isKindOfClass:NSNumber.class] && [body[@"retentionDays"] doubleValue] == [body[@"retentionDays"] integerValue]) success = [self.store setTrashRetentionDays:[body[@"retentionDays"] integerValue] error:&error];
+    [self json:schemeTask url:schemeTask.request.URL status:success ? 200 : 400 value:success ? @{ @"saved": @YES } : @{ @"error": error.localizedDescription ?: @"trash_operation_failed" }];
 }
 
 - (void)handleInventoryExport:(id<WKURLSchemeTask>)schemeTask {

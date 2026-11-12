@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "PCSSStore.h"
+#import <sqlite3.h>
 
 static void Require(BOOL condition, NSString *message) {
     if (condition) return;
@@ -85,6 +86,22 @@ int main(void) {
         [store purgeExpiredFiles];
         Require([store cachedStructureForCAS:@"65-85-0"] == nil, @"Expired orphan structure was retained");
         Require([NSFileManager.defaultManager contentsOfDirectoryAtURL:[root URLByAppendingPathComponent:@"Backups"] includingPropertiesForKeys:nil options:0 error:&error].count > 0, @"Recent backups were removed");
+
+        Require([store replaceChemicals:@[chemical] createBackup:NO error:&error], @"Trash fixture failed");
+        Require([store moveToTrashIDs:@[@"test-1"] error:&error], @"Move to Trash failed");
+        Require([store allChemicals:&error].count == 0, @"Deleted record remained in inventory");
+        Require([store trashedChemicals:&error].count == 1, @"Deleted record did not enter Trash");
+        Require([store restoreTrashIDs:@[@"test-1"] error:&error], @"Restore from Trash failed");
+        Require([store allChemicals:&error].count == 1 && [store trashedChemicals:&error].count == 0, @"Trash restore lost data");
+        Require(![store setTrashRetentionDays:0 error:&error] && ![store setTrashRetentionDays:15 error:&error], @"Invalid retention was accepted");
+        Require([store setTrashRetentionDays:1 error:&error] && store.trashRetentionDays == 1, @"Retention preference failed");
+        Require([store moveToTrashIDs:@[@"test-1"] error:&error], @"Second Trash move failed");
+        sqlite3 *database = NULL;
+        NSURL *databaseURL = [root URLByAppendingPathComponent:@"inventory.sqlite3"];
+        Require(sqlite3_open(databaseURL.fileSystemRepresentation, &database) == SQLITE_OK, @"Could not open test database");
+        Require(sqlite3_exec(database, "UPDATE trash SET deleted_at=0", NULL, NULL, NULL) == SQLITE_OK, @"Could not age Trash fixture");
+        sqlite3_close(database);
+        Require([store trashedChemicals:&error].count == 0, @"Expired Trash record was not purged");
 
         [NSFileManager.defaultManager removeItemAtURL:root error:nil];
         NSLog(@"PCSSStore tests passed");

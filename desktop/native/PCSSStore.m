@@ -3,6 +3,7 @@
 
 static NSString *const PCSSErrorDomain = @"PCSSStore";
 static const NSInteger PCSSSchemaVersion = 1;
+static const NSInteger PCSSDefaultTrashDays = 7;
 
 @interface PCSSStore ()
 @property(nonatomic) sqlite3 *database;
@@ -39,6 +40,7 @@ static const NSInteger PCSSSchemaVersion = 1;
         ![self execute:@"PRAGMA synchronous=FULL" error:error] ||
         ![self execute:@"CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)" error:error] ||
         ![self execute:@"CREATE TABLE IF NOT EXISTS chemicals (id TEXT PRIMARY KEY, name TEXT NOT NULL, formula TEXT NOT NULL, cas TEXT NOT NULL, location TEXT NOT NULL, amount TEXT NOT NULL, tags_json TEXT NOT NULL, created_at TEXT NOT NULL, structure_url TEXT NOT NULL, structure_status TEXT, database_json TEXT)" error:error] ||
+        ![self execute:@"CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY, record_json TEXT NOT NULL, deleted_at REAL NOT NULL)" error:error] ||
         ![self execute:@"CREATE INDEX IF NOT EXISTS chemicals_cas_idx ON chemicals(cas)" error:error] ||
         ![self execute:@"CREATE INDEX IF NOT EXISTS chemicals_created_idx ON chemicals(created_at DESC)" error:error]) return nil;
     NSString *versionSQL = [NSString stringWithFormat:@"INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','%ld')", (long)PCSSSchemaVersion];
@@ -110,6 +112,126 @@ static const NSInteger PCSSSchemaVersion = 1;
         }
         sqlite3_finalize(statement);
         return chemicals;
+    }
+}
+
+- (NSInteger)trashRetentionDays {
+    sqlite3_stmt *statement = NULL;
+    NSInteger days = PCSSDefaultTrashDays;
+    @synchronized (self) {
+        if (sqlite3_prepare_v2(self.database, "SELECT value FROM metadata WHERE key='trash_retention_days'", -1, &statement, NULL) == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+            NSInteger stored = [[self stringColumn:statement index:0] integerValue];
+            if (stored >= 1 && stored <= 14) days = stored;
+        }
+        if (statement) sqlite3_finalize(statement);
+    }
+    return days;
+}
+
+- (void)purgeTrash {
+    @synchronized (self) {
+        NSTimeInterval cutoff = NSDate.date.timeIntervalSince1970 - [self trashRetentionDays] * 86400;
+        sqlite3_stmt *statement = NULL;
+        if (sqlite3_prepare_v2(self.database, "DELETE FROM trash WHERE deleted_at <= ?", -1, &statement, NULL) == SQLITE_OK) {
+            sqlite3_bind_double(statement, 1, cutoff);
+            sqlite3_step(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+    }
+}
+
+- (BOOL)setTrashRetentionDays:(NSInteger)days error:(NSError **)error {
+    if (days < 1 || days > 14) return NO;
+    @synchronized (self) {
+        NSString *sql = [NSString stringWithFormat:@"INSERT OR REPLACE INTO metadata(key,value) VALUES('trash_retention_days','%ld')", (long)days];
+        BOOL saved = [self execute:sql error:error];
+        if (saved) [self purgeTrash];
+        return saved;
+    }
+}
+
+- (NSArray<NSDictionary *> *)trashedChemicals:(NSError **)error {
+    @synchronized (self) {
+        [self purgeTrash];
+        sqlite3_stmt *statement = NULL;
+        if (sqlite3_prepare_v2(self.database, "SELECT record_json,deleted_at FROM trash ORDER BY deleted_at DESC", -1, &statement, NULL) != SQLITE_OK) {
+            if (error) *error = [self sqliteError:@"Could not read trash"];
+            return nil;
+        }
+        NSMutableArray *records = [NSMutableArray array];
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            NSMutableDictionary *record = [[self JSONObject:[self stringColumn:statement index:0] fallback:@{}] mutableCopy];
+            record[@"deletedAt"] = @(sqlite3_column_double(statement, 1));
+            [records addObject:record];
+        }
+        sqlite3_finalize(statement);
+        return records;
+    }
+}
+
+- (BOOL)moveToTrashIDs:(NSArray<NSString *> *)ids error:(NSError **)error {
+    if (![ids isKindOfClass:NSArray.class] || ids.count == 0 || ids.count > 10000) return NO;
+    for (id identifier in ids) if (![identifier isKindOfClass:NSString.class]) return NO;
+    @synchronized (self) {
+        NSArray *existing = [self allChemicals:error];
+        if (!existing || ![self execute:@"BEGIN IMMEDIATE TRANSACTION" error:error]) return NO;
+        BOOL success = YES;
+        NSMutableSet *wanted = [NSMutableSet setWithArray:ids];
+        sqlite3_stmt *insert = NULL, *remove = NULL;
+        if (sqlite3_prepare_v2(self.database, "INSERT OR REPLACE INTO trash(id,record_json,deleted_at) VALUES(?,?,?)", -1, &insert, NULL) != SQLITE_OK ||
+            sqlite3_prepare_v2(self.database, "DELETE FROM chemicals WHERE id=?", -1, &remove, NULL) != SQLITE_OK) success = NO;
+        for (NSDictionary *record in existing) {
+            NSString *identifier = record[@"id"];
+            if (!success || ![wanted containsObject:identifier]) continue;
+            NSString *json = [self JSONString:record fallback:@"{}"];
+            sqlite3_bind_text(insert, 1, identifier.UTF8String, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(insert, 2, json.UTF8String, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_double(insert, 3, NSDate.date.timeIntervalSince1970);
+            success = sqlite3_step(insert) == SQLITE_DONE;
+            sqlite3_reset(insert); sqlite3_clear_bindings(insert);
+            if (!success) break;
+            sqlite3_bind_text(remove, 1, identifier.UTF8String, -1, SQLITE_TRANSIENT);
+            success = sqlite3_step(remove) == SQLITE_DONE;
+            sqlite3_reset(remove); sqlite3_clear_bindings(remove);
+        }
+        if (insert) sqlite3_finalize(insert);
+        if (remove) sqlite3_finalize(remove);
+        if (success) success = [self execute:@"COMMIT" error:error];
+        else [self execute:@"ROLLBACK" error:nil];
+        return success;
+    }
+}
+
+- (BOOL)restoreTrashIDs:(NSArray<NSString *> *)ids error:(NSError **)error {
+    if (![ids isKindOfClass:NSArray.class] || ids.count == 0 || ids.count > 10000) return NO;
+    for (id identifier in ids) if (![identifier isKindOfClass:NSString.class]) return NO;
+    @synchronized (self) {
+        NSArray *trash = [self trashedChemicals:error];
+        NSArray *current = [self allChemicals:error];
+        if (!trash || !current) return NO;
+        NSMutableSet *wanted = [NSMutableSet setWithArray:ids];
+        NSMutableArray *restored = [current mutableCopy];
+        NSMutableSet *existingIDs = [NSMutableSet set];
+        for (NSDictionary *record in current) [existingIDs addObject:record[@"id"]];
+        for (NSDictionary *record in trash) if ([wanted containsObject:record[@"id"]]) {
+            if ([existingIDs containsObject:record[@"id"]]) return NO;
+            NSMutableDictionary *clean = [record mutableCopy]; [clean removeObjectForKey:@"deletedAt"];
+            [restored addObject:clean];
+        }
+        if (![self replaceChemicals:restored createBackup:YES error:error]) return NO;
+        if (![self execute:@"BEGIN IMMEDIATE TRANSACTION" error:error]) return NO;
+        sqlite3_stmt *statement = NULL;
+        BOOL success = sqlite3_prepare_v2(self.database, "DELETE FROM trash WHERE id=?", -1, &statement, NULL) == SQLITE_OK;
+        for (NSString *identifier in wanted) {
+            if (!success) break;
+            sqlite3_bind_text(statement, 1, identifier.UTF8String, -1, SQLITE_TRANSIENT);
+            success = sqlite3_step(statement) == SQLITE_DONE;
+            sqlite3_reset(statement); sqlite3_clear_bindings(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+        if (success) success = [self execute:@"COMMIT" error:error];
+        else [self execute:@"ROLLBACK" error:nil];
+        return success;
     }
 }
 
@@ -207,6 +329,7 @@ invalid:
 // Run at startup and hourly; a closed app cleans up on its next launch.
 - (void)purgeExpiredFiles {
     @synchronized (self) {
+        [self purgeTrash];
         NSArray *chemicals = [self allChemicals:nil];
         if (!chemicals) return;
         NSMutableSet *activeImages = [NSMutableSet set];

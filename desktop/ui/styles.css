@@ -168,3 +168,7 @@ footer { display:flex; justify-content:space-between; gap:20px; padding:27px cla
 .form-grid .cas-field { grid-column:1/-1; padding:16px; background:#e9f2eb; border:1px solid #cfdfd2; border-radius:10px; }
 .form-grid .cas-field input { height:54px; font-size:18px; font-weight:650; letter-spacing:.02em; }
 .form-grid .cas-field>span { color:var(--green); font-size:13px; }
+
+.trash-nav,.restore-button { border:1px solid var(--line); border-radius:8px; padding:9px 12px; background:white; color:var(--green); cursor:pointer; }
+.restore-button { position:absolute; z-index:2; top:12px; right:12px; }
+[hidden] { display:none!important; }

@@ -5,6 +5,9 @@ Versioning.
 
 ## Unreleased
 
+- Add persistent Trash with inventory search, filters, selection, restore, and
+  configurable 1–14 day retention for new deletions.
+
 - Lead chemical entry with CAS, require quantity, allow offline entry with
   missing identity, and fill incomplete identities with paced online checks.
 - Toggle Select and Cancel selection in the same control.
