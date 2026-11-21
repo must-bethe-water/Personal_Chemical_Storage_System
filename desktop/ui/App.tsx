@@ -119,6 +119,8 @@ const ChemicalStructure = ({ chemical, alt, unavailable, onNotFound }: { chemica
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [resolvedUrl, setResolvedUrl] = useState("");
+  const [fittedImage, setFittedImage] = useState({ source: "", url: "" });
+  const fittedUrl = fittedImage.source === source ? fittedImage.url : "";
   const checkingRef = useRef(false);
   const objectUrlRef = useRef("");
   const retryTimerRef = useRef<number | undefined>(undefined);
@@ -176,9 +178,36 @@ const ChemicalStructure = ({ chemical, alt, unavailable, onNotFound }: { chemica
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
   }, []);
 
+  const fitImage = (image: HTMLImageElement) => {
+    if (fittedUrl || !image.naturalWidth || !image.naturalHeight) return;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return;
+      context.drawImage(image, 0, 0);
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      let left = canvas.width, top = canvas.height, right = -1, bottom = -1;
+      for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        if (data[i + 3] < 32 || (data[i] > 245 && data[i + 1] > 245 && data[i + 2] > 245)) continue;
+        left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+      if (right < left) return;
+      const pad = Math.max(8, Math.ceil(Math.max(right - left, bottom - top) * .08));
+      const x = Math.max(0, left - pad), y = Math.max(0, top - pad);
+      const width = Math.min(canvas.width - x, right - left + 1 + pad * 2);
+      const height = Math.min(canvas.height - y, bottom - top + 1 + pad * 2);
+      const cropped = document.createElement("canvas");
+      cropped.width = width; cropped.height = height;
+      cropped.getContext("2d")?.drawImage(canvas, x, y, width, height, 0, 0, width, height);
+      setFittedImage({ source, url: cropped.toDataURL("image/png") });
+    } catch { /* External images may block canvas access; CSS containment still applies. */ }
+  };
+
   if (chemical.structureStatus === "not-found") return <div className="structure-fallback show"><span>⌬</span><small>{unavailable}</small></div>;
   return <>
-    <img key={`${source}-${attempt}`} src={resolvedUrl || source} alt={alt} loading="lazy" style={failed ? { display: "none" } : undefined} onLoad={() => setFailed(false)} onError={() => { setFailed(true); void checkPubChem(); }} />
+    <img key={`${source}-${attempt}`} src={fittedUrl || resolvedUrl || source} alt={alt} loading="lazy" style={failed ? { display: "none" } : undefined} onLoad={(event) => { setFailed(false); fitImage(event.currentTarget); }} onError={() => { setFailed(true); void checkPubChem(); }} />
     <div className={`structure-fallback ${failed ? "show" : ""}`}><span>⌬</span><small>{unavailable}</small></div>
   </>;
 };
@@ -630,20 +659,17 @@ export default function App() {
             <button type="button" className={language === "zh" ? "active" : ""} aria-pressed={language === "zh"} onClick={() => changeLanguage("zh")}>中文</button>
           </div>
           <button className="icon-button" onClick={() => { setPageSizeDraft(String(pageSize)); setTrashDaysDraft(String(trashDays)); setSettingsOpen(true); }} aria-label={t.systemSettings} title={t.systemSettings}>⚙</button>
-          <button className="trash-nav" onClick={() => viewingTrash ? (setViewingTrash(false), setQuery(""), setField("all"), setSelectedIds([]), setSelecting(false)) : void openTrash()} aria-label={viewingTrash ? t.backInventory : t.trash} title={viewingTrash ? t.backInventory : t.trash}>{viewingTrash ? t.backInventory : "🗑"}</button>
-          {!viewingTrash && <button className="primary-button" disabled={storageFailed} onClick={openAddModal}><Icon>＋</Icon>{t.add}</button>}
         </div>
       </header>
       {storageFailed && <div className="storage-error" role="alert"><strong>{t.storageError}</strong><span>{t.storageRecovery}</span></div>}
-      <section className="hero" id="top">
-        <div className="hero-content"><p className="eyebrow">PERSONAL CHEMICAL STORAGE SYSTEM</p><h1>{t.heroLead}<br /><em>{t.heroAccent}</em> {t.heroEnd}</h1><p className="hero-copy">{t.heroCopy}</p></div>
-        <div className="molecule-orbit" aria-hidden="true"><span>N</span><i /><i /><i /><b>O</b></div>
-      </section>
-      <section className="workspace">
-        <div className="stats" aria-label={t.overview}>
-          <div><span>{t.records}</span><strong>{chemicals.length.toString().padStart(2, "0")}</strong><small>{t.unique}</small></div>
-          <div><span>{t.locations}</span><strong>{locations.toString().padStart(2, "0")}</strong><small>{t.activeLocations}</small></div>
-          <div><span>{t.tags}</span><strong>{tags.toString().padStart(2, "0")}</strong><small>{t.categories}</small></div>
+      <section className="workspace" id="top">
+        <div className="overview-row">
+          <div className="stats" aria-label={t.overview}>
+            <div><span>{t.records}</span><strong>{chemicals.length}</strong><small>{t.unique}</small></div>
+            <div><span>{t.locations}</span><strong>{locations}</strong><small>{t.activeLocations}</small></div>
+            <div><span>{t.tags}</span><strong>{tags}</strong><small>{t.categories}</small></div>
+          </div>
+          {!viewingTrash && <button className="primary-button overview-add" disabled={storageFailed} onClick={openAddModal}><Icon>＋</Icon>{t.add}</button>}
         </div>
         <div className="inventory-heading"><div><p className="eyebrow">INVENTORY</p><h2>{viewingTrash ? t.trash : t.inventory}</h2></div><p>{t.showing(results.length, viewingTrash ? trash.length : chemicals.length)}</p></div>
         <div className="toolbar">
@@ -654,6 +680,7 @@ export default function App() {
         {field === "tag" && <div className="tag-filter-panel"><div><strong>{t.tagLegend}</strong><small>{t.tagLegendCopy}</small></div><div className="tag-filter-list">{allTags.length ? allTags.map((tag) => <button key={tag.toLocaleLowerCase()} className={selectedTagKeys.has(tag.toLocaleLowerCase()) ? "active" : ""} aria-pressed={selectedTagKeys.has(tag.toLocaleLowerCase())} onClick={() => toggleTagFilter(tag)}><span>✓</span>{tag}</button>) : <em>{t.noTags}</em>}</div>{selectedTags.length > 0 && <button className="clear-tag-filter" onClick={() => { setQuery(""); setSelectedFilterTags([]); }}>{t.clearTags}</button>}</div>}
         <div className="bulk-toolbar" role="group" aria-label={t.select}>
           <button disabled={!selecting && (!hydrated || storageFailed || dataBusy || !results.length)} aria-pressed={selecting} onClick={() => { if (selecting) { setSelecting(false); setSelectedIds([]); } else setSelecting(true); }}>{selecting ? t.deselect : t.select}</button>
+          <button className="trash-nav" onClick={() => viewingTrash ? (setViewingTrash(false), setQuery(""), setField("all"), setSelectedIds([]), setSelecting(false)) : void openTrash()}>{viewingTrash ? t.backInventory : t.trash}</button>
           {selecting && <button disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setSelectedIds(results.map((item) => item.id))}>{t.selectAll}</button>}
           <button className="bulk-danger" hidden={viewingTrash} disabled={!hydrated || storageFailed || dataBusy || !results.length} onClick={() => setDeleteTarget(results)}>{t.deleteAll} ({results.length})</button>
           {selecting && <><span>{t.selectedCount(selectedResults.length)}</span>{viewingTrash ? <button disabled={trashBusy || !selectedResults.length} onClick={() => void restoreFromTrash(selectedResults.map((item) => item.id))}>{t.restoreSelected}</button> : <><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => setDeleteTarget(selectedResults)}>{t.deleteSelected}</button><button disabled={storageFailed || dataBusy || !selectedResults.length} onClick={() => { setBatchTag(""); setBatchTagOpen(true); }}>{t.batchTag}</button></>}</>}

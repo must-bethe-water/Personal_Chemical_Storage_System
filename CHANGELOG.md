@@ -5,23 +5,7 @@ Versioning.
 
 ## Unreleased
 
-- Add persistent Trash with inventory search, filters, selection, restore, and
-  configurable 1–14 day retention for new deletions.
-
-- Lead chemical entry with CAS, require quantity, allow offline entry with
-  missing identity, and fill incomplete identities with paced online checks.
-- Toggle Select and Cancel selection in the same control.
-
-- Preserve the app bundle directory during rebuilds so Dock bookmarks remain valid;
-  stage and verify updated contents before replacement, with rollback on failure.
-
-- Consolidate display, database access, and data/backup settings in the header gear.
-
-- Show Select all only while selection mode is active.
-- Paginate inventory and filtered results, keeping selections across pages.
-- Add System settings with a locally saved page size (1–500; default 24).
-
-## [1.1.0] - 2026-09-22
+## [1.1.0] - 2026-11-21
 
 ### Added
 
@@ -29,9 +13,33 @@ Versioning.
   the inventory and all search/filter results, with existing or new tags.
 - Undo the latest single or batch deletion for 30 minutes within the current
   session. Another deletion, import, or app exit clears the undo record.
+- Persistent Trash with inventory search, filters, pagination, selection,
+  restore, and configurable 1–14 day retention for new deletions.
+- Configurable inventory page size from 1–500 records (default 24), with
+  selections retained across pages.
+- Offline chemical entry led by CAS and quantity. Incomplete names and formulas
+  are filled with paced database checks after connectivity returns.
+
+### Changed
+
+- Consolidate display, database access, and data/backup preferences under the
+  System settings gear.
+- Make selection controls contextual, including Select all only while selection
+  mode is active, and scope batch actions to the current search/filter results.
+- Refresh the inventory overview, Add action, Trash navigation, and structure
+  image sizing for a more compact working layout.
 - Automatic backups expire after 30 days (still capped at 20 snapshots).
   Unused structure images older than 30 days are also removed at startup and
   hourly while running. Active inventory structures remain available offline.
+- Preserve the app bundle directory during rebuilds so Dock shortcuts continue
+  to point to the latest verified build, with rollback if replacement fails.
+
+### Fixed
+
+- Retry incomplete identity and structure-image recovery at a controlled pace
+  after reconnecting, while leaving confirmed image-not-found records alone.
+- Crop excessive blank margins from supported molecular structure images while
+  retaining CSS containment as a safe fallback for cross-origin images.
 
 ## [1.0.0] - 2026-08-25
 

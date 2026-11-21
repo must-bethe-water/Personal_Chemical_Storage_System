@@ -36,5 +36,5 @@ jobs:
             outputs/PCSS-*-macOS-universal-unnotarized.dmg \
             outputs/SHA256SUMS.txt \
             --verify-tag \
-            --notes-file INSTALL.md \
+            --notes-file RELEASE_NOTES.md \
             --title "PCSS ${GITHUB_REF_NAME#v} (unnotarized)"

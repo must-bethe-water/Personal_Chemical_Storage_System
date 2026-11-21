@@ -41,8 +41,9 @@ creates:
 
 The workflow needs no Apple certificate or account secret. It runs only for a
 `v*` tag, verifies that the tag equals the package version, runs all tests,
-builds and verifies the ad-hoc-signed app, and creates a GitHub Release whose
-notes are the unnotarized installation warning in `INSTALL.md`. Repository URL
+builds and verifies the ad-hoc-signed app, and creates a GitHub Release using
+the user-facing announcement in `RELEASE_NOTES.md`. That announcement must keep
+the unnotarized installation warning and link to `INSTALL.md`. Repository URL
 metadata is derived automatically from the GitHub environment.
 
 ## Release checklist
